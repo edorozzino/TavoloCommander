@@ -85,6 +85,7 @@
           <p><b>Obiettivo:</b> ${esc(M.lesson.goal)}</p><div class="row"><span class="grow"></span><button class="primary" data-close>Comincia</button></div>`);
       }
     } else if (msg.t === 'autoLeft') {
+      CT.closeModal();
       const wasLesson = !!M?.lesson;
       M = null;
       CT.store.del('ct-auto-session');
@@ -193,6 +194,8 @@
       <p class="muted">Il motore applica le regole: fasi, priorità, Pila, combattimento, danni da comandante. Si gioca con i mazzi iniziali
       o con i mazzi salvati le cui carte sono tutte programmate. Gli altri giocatori entrano con lo stesso nome del tavolo,
       oppure aggiungi giocatori computer per riempire i posti (da 2 a 4 in tutto).</p>
+      ${isHost && L.players.filter((p) => !p.bot).length < 2 ? `<div class="auto-invite"><span>Vuoi giocare con gli amici? Mandagli il link di questo tavolo.</span>
+        <button class="primary" data-auto="invite">📨 Invita amici</button></div>` : ''}
       <ul class="auto-seats">${L.players.map((p) => `<li>${p.id === L.host ? '★ ' : ''}${p.bot ? '🤖 ' : ''}<b>${esc(p.name)}</b>
         <span class="muted">${p.deckName ? esc(p.deckName) : 'deve scegliere un mazzo'}${p.connected ? '' : ' · disconnesso'}</span>
         ${p.bot && isHost ? `<span class="grow"></span><button class="small" data-remove-bot="${p.id}">Togli</button>` : ''}</li>`).join('')}</ul>
@@ -202,6 +205,7 @@
       <label>Il tuo mazzo <select data-auto="deck"><option value="">— scegli —</option>${deckOptions}</select></label>
       <div class="row">
         ${isHost ? '<button class="primary" data-auto="start">Avvia la partita</button>' : '<span class="muted">La partita la avvia chi ha creato il tavolo (★).</span>'}
+        <button data-auto="invite" class="${isHost ? '' : 'primary'}">📨 Invita amici</button>
         <span class="grow"></span><button data-auto="leave">Esci</button>
       </div>
       ${logHtml()}
@@ -297,7 +301,7 @@
         <b>Turno ${g.turn}</b><span class="muted">di ${esc(playerName(g.active))}</span>
         <div class="asteps">${stepTrack()}</div>
         <span class="astatus ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
-        <button class="primary" data-auto="pass" ${myPriority() ? '' : 'disabled'} title="Passa la priorità (Spazio)">Passa</button>
+        <button class="primary ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'} title="Passa la priorità (Spazio)">Passa</button>
         <button data-auto="arena" title="Torna alla vista Arena">Vista Arena</button>
         <button data-auto="leave">Esci</button>
       </header>
@@ -312,6 +316,8 @@
           ${M.lesson ? `<div class="auto-lesson"><b>Lezione ${M.lesson.n}: ${esc(M.lesson.title)}</b>
             <div class="muted">${esc(M.lesson.goal)}</div><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
           <div class="auto-prompt">${promptHtml()}</div>
+          ${M.lesson ? '' : `<label class="autopass" title="Come in MTG Arena: se in quel momento non hai carte da giocare né abilità da attivare, la priorità passa da sola">
+          <input type="checkbox" data-autopass ${M.autoPass ? 'checked' : ''}> Passa da solo quando non posso fare niente</label>`}
           <h4>Pila</h4><div class="auto-stack">${stackHtml()}</div>
           <h4>Registro</h4>${logHtml()}
         </aside>
@@ -449,11 +455,13 @@
         ${M.lesson ? `<div class="auto-lesson"><b>${esc(M.lesson.goal)}</b><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
         <div class="auto-prompt">${promptHtml()}</div>
         <div class="mg-actions">
-          <button class="primary mg-pass" data-auto="pass" ${myPriority() ? '' : 'disabled'}>Passa</button>
+          <button class="primary mg-pass ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'}>Passa</button>
           <button data-auto="log" title="Registro e Pila">📜</button>
           <button data-auto="classic" title="Vista classica">▦</button>
           <button data-auto="leave" title="Esci">✕</button>
         </div>
+        ${M.lesson ? '' : `<label class="autopass" title="Come in MTG Arena: se in quel momento non hai carte da giocare né abilità da attivare, la priorità passa da sola">
+          <input type="checkbox" data-autopass ${M.autoPass ? 'checked' : ''}> Passa da solo quando non posso fare niente</label>`}
       </aside>
       ${overlaysHtml()}
     </div>`;
@@ -487,6 +495,13 @@
     const d = myDecision();
     if (d) return decisionPrompt(d);
     if (g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.decision.player))} finisca di ${DECISION_NAMES[g.decision.type] || 'decidere'}…</p>`;
+    const top = g.stack[g.stack.length - 1];
+    if (top && myPriority()) {
+      return top.controller === M.me
+        ? `<p><b>Hai lanciato ${esc(top.name)}.</b> Premi <b>Passa</b> per farla risolvere, oppure aggiungi un'altra magia o abilità.</p>`
+        : `<p><b>${esc(playerName(top.controller))} ha lanciato ${esc(top.name)}.</b> Puoi rispondere con un istantaneo o un'abilità, oppure premi <b>Passa</b> per lasciarla risolvere.</p>`;
+    }
+    if (top && !g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.priority))} risponda a ${esc(top.name)}…</p>`;
     if (myPriority() && CT.compact()) return '<p><b>Hai la priorità.</b> Tocca una carta per giocarla o un tuo permanente per le abilità, oppure Passa.</p>';
     if (myPriority()) {
       return `<p><b>Hai la priorità.</b> Clicca una carta in mano per giocarla o lanciarla, un tuo permanente per usarne le abilità,
@@ -673,6 +688,7 @@
       case 'pass': if (myPriority()) act({ type: 'pass' }); return undefined;
       case 'cancel': flow = null; return render();
       case 'classic': return CT.setView('classic');
+      case 'invite': return CT.invite(M.room, 'auto');
       case 'arena': return CT.setView('arena');
       case 'log': return CT.openModal(`<h2>Pila</h2><div class="auto-stack">${stackHtml()}</div><h2>Registro</h2>${logHtml()}
         <div class="row"><span class="grow"></span><button data-close>Chiudi</button></div>`);
@@ -806,6 +822,7 @@
 
   document.addEventListener('change', (e) => {
     if (e.target.dataset?.auto === 'deck' && e.target.value) send({ t: 'autoDeck', deckId: e.target.value });
+    if (e.target.matches?.('[data-autopass]')) send({ t: 'autoPass', on: e.target.checked });
   });
 
   document.addEventListener('keydown', (e) => {

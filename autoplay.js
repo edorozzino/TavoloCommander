@@ -107,7 +107,7 @@ function broadcast(room) {
     }),
   };
   for (const ws of room.sockets) {
-    const msg = { t: 'autoState', room: room.code, me: ws.pid, lobby, log: room.log.slice(-120) };
+    const msg = { t: 'autoState', room: room.code, me: ws.pid, lobby, log: room.log.slice(-120), autoPass: !room.lesson && room.players.get(ws.pid)?.autoPass !== false };
     if (room.lesson) msg.lesson = lessons.lessonStatus(room.lesson);
     if (room.game) {
       msg.game = buildView(room.game, ws.pid, { names, images: room.images, arts: room.arts });
@@ -215,6 +215,8 @@ async function handle(ws, msg) {
       if (ws.pid !== room.host || !bot?.isBot) throw new RuleError('NOT_HOST', 'Solo chi ha creato il tavolo può togliere i giocatori computer');
       room.players.delete(bot.id);
       room.order = room.order.filter((x) => x !== bot.id);
+    } else if (msg.t === 'autoPass') {
+      p.autoPass = !!msg.on;
     } else if (msg.t === 'autoStart' && !room.game) {
       if (ws.pid !== room.host) throw new RuleError('NOT_HOST', 'Solo chi ha creato il tavolo può avviare la partita');
       await start(room);
@@ -245,11 +247,41 @@ async function handle(ws, msg) {
   scheduleBots(room);
 }
 
+// Può fare qualcosa adesso? Una carta da giocare o un'abilità da attivare (le abilità di mana da sole non contano)
+function canAct(g, pid) {
+  const me = buildView(g, pid).players.find((p) => p.id === pid);
+  if ([...(me.hand || []), ...me.command].some((o) => o.playable?.ok)) return true;
+  return me.battlefield.some((o) => (o.abilities || []).some((a) => a.kind !== 'mana' && a.playable?.ok));
+}
+
+// Come in MTG Arena: chi ha la priorità ma non può fare niente passa da solo, così nessuno resta ad aspettare un clic
+// (si disattiva dal gioco; nelle lezioni dell'Accademia si passa sempre a mano).
+// Nelle proprie fasi principali a Pila vuota ci si ferma sempre: è lì che si decide il turno
+function autoPasses(room, pid) {
+  const p = room.players.get(pid);
+  const g = room.game;
+  const myMain = g.active === pid && (g.step === 'main1' || g.step === 'main2') && g.stack.length === 0;
+  return !room.lesson && p && !p.isBot && p.autoPass !== false && !g.decision && !myMain && !canAct(g, pid);
+}
+
 // I giocatori computer muovono uno alla volta, con una breve pausa perché si veda che cosa fanno
 function scheduleBots(room) {
   if (room.botTimer || !room.game || room.game.winner) return;
   const g = room.game;
   const who = g.decision ? g.decision.player : g.priority;
+  if (who && autoPasses(room, who)) {
+    room.botTimer = setTimeout(() => {
+      room.botTimer = null;
+      if (!rooms.has(room.code) || room.game !== g || g.winner) return;
+      if (g.priority === who && autoPasses(room, who)) {
+        g.perform(who, { type: 'pass' });
+        narrate(room);
+        broadcast(room);
+      }
+      scheduleBots(room);
+    }, 350);
+    return;
+  }
   if (!who || !room.players.get(who)?.isBot) return;
   const move = botMove(g, who);
   const delay = move.type === 'pass' ? 150 : 700;

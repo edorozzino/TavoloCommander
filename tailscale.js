@@ -45,11 +45,12 @@ async function start(port, { funnel = false, password = '' } = {}) {
   if (st.error) {
     if (st.error.code === 'ENOENT') console.log('  Tailscale non è installato: scaricalo da https://tailscale.com/download e fai login.');
     else console.log('  Tailscale non risponde: ' + st.error.message);
-    return console.log('  Il tavolo resta raggiungibile solo in rete locale.\n');
+    console.log('  Il tavolo resta raggiungibile solo in rete locale.\n');
+    return null;
   }
   if (st.BackendState !== 'Running') {
     console.log('  Tailscale non è connesso: esegui "tailscale up" (o apri l\'app Tailscale) e riavvia il server.\n');
-    return;
+    return null;
   }
   const r = await run([mode, '--bg', String(port)], { echo: true });
   if (r.code !== 0) {
@@ -58,7 +59,8 @@ async function start(port, { funnel = false, password = '' } = {}) {
       console.log('    sudo tailscale set --operator=$USER');
       console.log('  e poi riavvia il server.');
     }
-    return console.log('  Non è stato possibile pubblicare il tavolo su Tailscale.\n');
+    console.log('  Non è stato possibile pubblicare il tavolo su Tailscale.\n');
+    return null;
   }
   const url = 'https://' + (String(st.Self?.DNSName || '').replace(/\.$/, '') || '<nome-pc>.<rete>.ts.net');
   console.log(`\n  Indirizzo del tavolo: ${url}`);
@@ -69,7 +71,9 @@ async function start(port, { funnel = false, password = '' } = {}) {
     console.log(`    (se chiede la password: ${password})`);
     if (!funnel) console.log('    Serve Tailscale acceso sul tuo dispositivo.');
   }
+  console.log('  Dal gioco, il pulsante "Invita" prepara il link per ogni tavolo.');
   console.log(`\n  Con Ctrl+C la pubblicazione su Tailscale viene tolta.\n`);
+  return { url, funnel };
 }
 
 async function stop(funnel = false) {

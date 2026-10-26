@@ -25,6 +25,7 @@ const USE_TAILSCALE = FUNNEL || process.argv.includes('--tailscale') || process.
 const GENERATED_PASSWORD = process.env.TAVOLO_PASSWORD === 'auto' || (FUNNEL && !process.env.TAVOLO_PASSWORD);
 const PASSWORD = GENERATED_PASSWORD ? generatePassword() : process.env.TAVOLO_PASSWORD;
 const auth = createAuth(PASSWORD);
+let publicAccess = null; // { url, funnel } quando il tavolo è pubblicato con Tailscale
 const MAX_PLAYERS = 6;
 const COLORS = ['#e05252', '#4f8fe0', '#4fbf6a', '#d9a33b', '#a565d9', '#3bbfbf'];
 const ZONES = ['library', 'hand', 'battlefield', 'graveyard', 'exile', 'command'];
@@ -89,6 +90,14 @@ async function handleApi(req, res, url) {
     const { found, notFound } = await lookupCards(names);
     return sendJson(res, 200, { cards: Object.fromEntries(found), notFound });
   }
+  if (resource === 'invite' && req.method === 'GET') {
+    // indirizzi da cui gli amici possono raggiungere il tavolo, dal più comodo; la chiave fa entrare senza scrivere la password
+    const addresses = [];
+    if (publicAccess) addresses.push({ url: publicAccess.url, label: publicAccess.funnel ? 'Da internet' : 'Rete Tailscale', note: publicAccess.funnel ? '' : 'Serve Tailscale acceso sul dispositivo' });
+    const tailnet = (ip) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip); // indirizzi interni di Tailscale
+    for (const ip of ips.filter((x) => !tailnet(x))) addresses.push({ url: `http://${ip}:${PORT}`, label: 'Stessa Wi-Fi', note: 'Solo per chi è collegato alla tua rete' });
+    return sendJson(res, 200, { addresses, key: auth.enabled ? PASSWORD : null });
+  }
   if (resource === 'starter-decks' && req.method === 'GET') {
     return sendJson(res, 200, STARTER_DECKS.map((d, i) => ({
       id: `starter-${i}`, name: d.name, style: d.style, commanders: [d.commander], cards: d.cards, maybe: [],
@@ -125,12 +134,18 @@ function sendLogin(res, status, error) {
   res.end(loginPage(error));
 }
 
+// Dopo il login si va alla pagina indicata da ?next= (per esempio il tavolo dell'invito), solo se è di questo sito
+function nextPage(url) {
+  const next = url.searchParams.get('next') || '/';
+  return next.startsWith('/') && !next.startsWith('//') ? next : '/';
+}
+
 // Login dal modulo (POST) oppure dal link con la password già dentro (/login?k=...)
 async function handleLogin(req, res, url) {
   const given = req.method === 'POST' ? (await readForm(req)).get('password') : url.searchParams.get('k');
   const result = auth.attempt(given || '');
   if (result === 'ok') {
-    res.writeHead(303, { 'Set-Cookie': auth.loginCookie(req), Location: '/' });
+    res.writeHead(303, { 'Set-Cookie': auth.loginCookie(req), Location: nextPage(url) });
     res.end();
     return;
   }
@@ -148,7 +163,7 @@ const server = http.createServer((req, res) => {
     }
   }
   if (url.pathname === '/login') {
-    res.writeHead(303, { Location: '/' });
+    res.writeHead(303, { Location: nextPage(url) });
     res.end();
     return;
   }
@@ -762,7 +777,7 @@ server.listen(PORT, '0.0.0.0', () => {
   if (GENERATED_PASSWORD) console.log(`  Password di questa partita (generata ora): ${PASSWORD}`);
   else console.log(auth.enabled ? '  Accesso protetto da password (TAVOLO_PASSWORD).' : '  Accesso libero: per chiedere una password avvia con TAVOLO_PASSWORD=...');
   console.log('\nPremi Ctrl+C per fermare il server.\n');
-  if (USE_TAILSCALE) tailscale.start(PORT, { funnel: FUNNEL, password: PASSWORD });
+  if (USE_TAILSCALE) tailscale.start(PORT, { funnel: FUNNEL, password: PASSWORD }).then((info) => { publicAccess = info; });
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

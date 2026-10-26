@@ -13,6 +13,15 @@
   let ws = null;
   let S = null; // stato ricevuto dal server
   let session = store.get('ct-session'); // { room, name, pid }
+  // Arrivo da un invito (/?t=<tavolo>&m=lan|auto): si entra in quel tavolo, non in quello dell'ultima volta
+  const inviteParams = new URLSearchParams(location.search);
+  let invited = inviteParams.get('t') ? { room: inviteParams.get('t').trim().toLowerCase().slice(0, 20), mode: inviteParams.get('m') === 'auto' ? 'auto' : 'lan' } : null;
+  if (invited) {
+    history.replaceState(null, '', '/');
+    session = null;
+    store.del('ct-session');
+    store.del('ct-auto-session');
+  }
   let viewer = null; // finestra zona aperta: { pid, zone }
   const commanderNames = {}; // iid -> { name, color } (ricordati anche quando il comandante è nascosto)
 
@@ -40,6 +49,7 @@
       $('#offline').classList.add('hidden');
       if (session) ws.send(JSON.stringify({ t: 'join', ...session }));
       window.Auto?.onOpen();
+      if (invited && $('#lobby-name').value.trim()) join();
     };
     ws.onmessage = (ev) => handle(JSON.parse(ev.data));
     ws.onclose = () => {
@@ -80,6 +90,8 @@
       if (msg.notLegendary?.length) t += ` Attenzione: ${msg.notLegendary.join(', ')} non è una creatura leggendaria, controlla di aver scelto il comandante giusto.`;
       toast(t, msg.notFound.length || msg.notLegendary?.length ? 9000 : 3500);
     } else if (msg.t === 'left') {
+      if (inv) closeModal(); // l'invito era per il tavolo appena lasciato
+      inv = null;
       session = null;
       S = null;
       store.del('ct-session');
@@ -260,7 +272,7 @@
         <b style="color:${p.color}">${esc(p.name)}</b><span class="mg-tlife" data-fx-life="${p.id}" data-v="${p.life}">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
         ${p.poison ? `<span>☠${p.poison}</span>` : ''}${cmd ? `<span class="${cmd >= 21 ? 'lethal' : ''}">⚔${cmd}</span>` : ''}${p.connected ? '' : '<span class="muted">⚠</span>'}</button>`;
     }).join('');
-    $('#opponents').innerHTML = `<nav class="mg-tabs">${tabs || '<span class="muted">In attesa degli altri giocatori: devono usare lo stesso nome del tavolo.</span>'}</nav>
+    $('#opponents').innerHTML = `<nav class="mg-tabs">${tabs || '<span class="muted">Sei solo al tavolo: usa <b>📨 Invita</b> per mandare il link ai tuoi amici.</span>'}</nav>
       ${opp ? `<div class="mg-oppwrap">${compactField(opp, false)}<div class="mg-piles">${['graveyard', 'exile'].map((z) => compactPile(opp, z, false)).join('')}</div></div>` : ''}`;
     if (!mine) { $('#me').innerHTML = ''; return; }
     const life = (attr, d, t) => `<button class="small" data-${attr}="${d}">${t}</button>`;
@@ -591,6 +603,7 @@
       case 'dice':
         return showMenu(x, y, 'Tira un dado', [4, 6, 8, 10, 12, 20].map((s) => [`d${s}`, () => act('dice', { sides: s })])
           .concat([['Altro…', () => { const s = askNumber('Quante facce?', 100); if (s) act('dice', { sides: s }); }]]));
+      case 'invite': return invite(S.code, 'lan');
       case 'more':
         return showMenu(x, y, null, [
           ['Mulligan', () => { if (confirm('Rimescolare la mano nel grimorio e pescare 7 carte?')) act('mulligan'); }],
@@ -598,7 +611,7 @@
           ['Ricomincia la partita (stesso mazzo)', () => { if (confirm('Rimettere tutte le tue carte nel mazzo e ripartire da 40 vita?')) act('restart'); }],
           '-',
           [arenaView() ? 'Vista classica (tavolo libero)' : 'Vista Arena', () => setView(arenaView() ? 'classic' : 'arena')],
-          ['Come far entrare gli altri', () => toast(`Gli altri giocatori devono aprire http://${location.host} dalla stessa rete Wi-Fi e usare il tavolo "${S.code}". (Se l'indirizzo dice localhost, usa l'IP mostrato nel terminale del server.)`, 10000)],
+          ['Invita amici…', () => invite(S.code, 'lan')],
           ['Cambia nome…', () => { const n = prompt('Nuovo nome:', me().name); if (n) { act('rename', { name: n }); session.name = n; store.set('ct-session', session); } }],
           ['Lascia il tavolo', () => { if (confirm('Lasciare il tavolo? Le tue carte verranno rimosse.')) act('leave'); }],
         ]);
@@ -864,9 +877,20 @@
   $('[data-menu="auto"]').addEventListener('click', () => showJoin(true, 'auto'));
   $('[data-menu="academy"]').addEventListener('click', () => window.Auto.academy($('#lobby-name').value.trim() || store.get('ct-name', '') || 'Allievo'));
   $('#join-back').addEventListener('click', () => showJoin(false));
+  if (invited) {
+    $('#lobby-room').value = invited.room;
+    showJoin(true, invited.mode);
+    $('#join-title').textContent = `Sei invitato al tavolo «${invited.room}»`;
+    if (!$('#lobby-name').value.trim()) {
+      $('#lobby-error').textContent = 'Scrivi il tuo nome e tocca "Siediti al tavolo".';
+      $('#lobby-error').classList.add('hint');
+    }
+  }
   $('#join-panel').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
 
   function join() {
+    invited = null;
+    $('#lobby-error').classList.remove('hint');
     if (joinMode === 'auto') {
       const name = $('#lobby-name').value.trim();
       if (!name) { $('#lobby-error').textContent = 'Scrivi il tuo nome.'; return; }
@@ -887,10 +911,80 @@
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'join', ...session }));
   }
 
+  // ---------- Inviti ----------
+  // Link che fa entrare direttamente nel tavolo (con la password già dentro, se il server ne chiede una), con QR e condivisione
+  let inv = null;
+  async function invite(room, mode) {
+    let info = { addresses: [], key: null };
+    try { info = await (await fetch('/api/invite')).json(); } catch { /* resta l'indirizzo di questa pagina */ }
+    const addresses = [...info.addresses];
+    const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+    if (!local && !addresses.some((a) => a.url === location.origin)) addresses.unshift({ url: location.origin, label: 'Questo indirizzo', note: '' });
+    if (!addresses.length) addresses.push({ url: location.origin, label: 'Questo indirizzo', note: 'Dal computer del server: gli altri devono usare l\'indirizzo IP mostrato nel terminale.' });
+    inv = { room, mode, key: info.key, addresses, pick: 0 };
+    drawInvite();
+  }
+
+  function inviteLink() {
+    const a = inv.addresses[inv.pick];
+    const path = `/?t=${encodeURIComponent(inv.room)}&m=${inv.mode}`;
+    return a.url + (inv.key ? `/login?k=${encodeURIComponent(inv.key)}&next=${encodeURIComponent(path)}` : path);
+  }
+  const inviteText = () => `Ti invito a una partita di Commander${inv.mode === 'auto' ? ' con regole automatiche' : ''} al tavolo «${inv.room}»! Apri il link ed entri subito: ${inviteLink()}`;
+
+  function drawInvite() {
+    const a = inv.addresses[inv.pick];
+    const link = inviteLink();
+    const qr = qrcode(0, 'M');
+    qr.addData(link);
+    qr.make();
+    viewer = null;
+    openModal(`<h2>Invita amici al tavolo «${esc(inv.room)}»</h2>
+      ${inv.addresses.length > 1 ? `<div class="inv-addr">${inv.addresses.map((x, i) => `<button class="${i === inv.pick ? 'on' : ''}" data-inv-addr="${i}">${esc(x.label)}</button>`).join('')}</div>` : ''}
+      <div class="inv-body">
+        <div class="inv-qr">${qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true })}</div>
+        <div class="inv-side">
+          <p>Chi apre il link entra direttamente in questo tavolo${inv.key ? ', senza scrivere la password' : ''}: deve solo scegliere il nome.
+          Dal telefono può anche inquadrare il codice con la fotocamera.</p>
+          ${a.note ? `<p class="muted small">⚠ ${esc(a.note)}</p>` : ''}
+          <input class="inv-link" readonly value="${esc(link)}">
+          <div class="row">
+            ${navigator.share ? '<button class="primary" data-inv="share">Condividi…</button>' : ''}
+            <button data-inv="whatsapp">WhatsApp</button>
+            <button data-inv="copy">Copia link</button>
+          </div>
+        </div>
+      </div>
+      <div class="row"><span class="grow"></span><button data-close>Chiudi</button></div>`);
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { // senza HTTPS gli appunti non sono disponibili: si seleziona il testo e si copia alla vecchia maniera
+      const field = $('.inv-link');
+      field.select();
+      document.execCommand('copy');
+    }
+    toast('Link copiato: incollalo nella chat con i tuoi amici.');
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!inv) return;
+    const addr = e.target.closest('[data-inv-addr]');
+    if (addr) { inv.pick = Number(addr.dataset.invAddr); drawInvite(); return; }
+    const b = e.target.closest('[data-inv]');
+    if (!b) return;
+    if (b.dataset.inv === 'copy') copyText(inviteLink());
+    if (b.dataset.inv === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(inviteText())}`, '_blank', 'noopener');
+    if (b.dataset.inv === 'share') navigator.share({ title: 'Tavolo Commander', text: inviteText().replace(/: \S+$/, ':'), url: inviteLink() }).catch(() => {});
+  });
+
   // Funzioni condivise con l'editor dei mazzi (builder.js)
   window.CT = {
     compact: arenaView,
     hover: () => hoverQuery.matches,
+    invite,
     setView,
     act, esc, toast, store, parseDeck, guessCommanders, showMenu, hideMenu, openModal, closeModal,
     send: (obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },

@@ -67,3 +67,43 @@ test('chi ha creato il tavolo aggiunge un giocatore computer, che gioca da solo 
   assert.ok(a.sent.length > before, 'il computer ha mosso e la vista è stata aggiornata');
   await autoplay.handle(a, { t: 'autoLeave' });
 });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const canPlaySomething = (view) => {
+  const me = view.players.find((p) => p.id === view.me);
+  return [...(me.hand || []), ...me.command].some((o) => o.playable?.ok)
+    || me.battlefield.some((o) => (o.abilities || []).some((a) => a.kind !== 'mana' && a.playable?.ok));
+};
+// nelle proprie fasi principali a Pila vuota il gioco aspetta sempre, anche senza niente da giocare
+const myMainPhase = (view) => view.active === view.me && ['main1', 'main2'].includes(view.step) && !view.stack.length;
+const mustWait = (view) => canPlaySomething(view) || myMainPhase(view);
+
+test('come in Arena, chi ha la priorità ma non può fare niente passa da solo: nessuno resta ad aspettare un clic', async () => {
+  const { a, b } = await table('t-autopass');
+  await autoplay.handle(a, { t: 'autoStart' });
+  assert.equal(a.last('autoState').autoPass, true);
+  for (let i = 0; i < 40; i++) {
+    await sleep(100);
+    const g = a.last('autoState').game;
+    if (g.decision) break;
+    const holder = g.priority === g.me ? a : b;
+    const view = holder.last('autoState').game;
+    if (view.priority === view.me && mustWait(view)) break;
+  }
+  const g = a.last('autoState').game;
+  const holder = g.priority === g.me ? a : b;
+  assert.ok(g.decision || mustWait(holder.last('autoState').game), `fermi a ${g.step} con la priorità a chi non può fare niente`);
+});
+
+test('con il passaggio automatico disattivato la priorità resta a chi ce l’ha finché non preme Passa', async () => {
+  const { a, b } = await table('t-manual');
+  await autoplay.handle(a, { t: 'autoPass', on: false });
+  await autoplay.handle(b, { t: 'autoPass', on: false });
+  await autoplay.handle(a, { t: 'autoStart' });
+  const before = a.last('autoState').game;
+  assert.equal(a.last('autoState').autoPass, false);
+  await sleep(700);
+  const after = a.last('autoState').game;
+  assert.equal(after.step, before.step);
+  assert.equal(after.priority, before.priority);
+});

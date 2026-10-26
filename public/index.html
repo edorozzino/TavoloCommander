@@ -57,7 +57,7 @@
           <button type="button" id="join-back">Indietro</button>
           <button type="button" id="lobby-join" class="primary">Siediti al tavolo</button>
         </div>
-        <p class="muted small">Gli altri giocatori aprono lo stesso indirizzo dalla stessa Wi-Fi e scelgono lo stesso tavolo.</p>
+        <p class="muted small">Una volta al tavolo, il pulsante <b>📨 Invita</b> prepara il link da mandare agli amici.</p>
       </form>
       <p id="lobby-error" class="error"></p>
     </div>
@@ -74,6 +74,7 @@
     <header class="topbar">
       <span class="room-label">Tavolo: <b id="room-code"></b></span>
       <div class="actions">
+        <button data-act="invite" class="primary" title="Manda il link di questo tavolo ai tuoi amici">📨 Invita</button>
         <button data-act="builder">I miei mazzi</button>
         <button data-act="deck">Carica mazzo</button>
         <button data-act="startTurn" title="Stappa tutto e pesca una carta (tasto T)">Inizia turno</button>
@@ -107,6 +108,7 @@
   <section id="builder" class="builder hidden"></section>
   <section id="auto" class="auto hidden"></section>
 
+  <script src="vendor/qrcode.js"></script>
   <script src="fx.js"></script>
   <script src="app.js"></script>
   <script src="builder.js"></script>

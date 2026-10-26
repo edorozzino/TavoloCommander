@@ -1,8 +1,8 @@
 // Service worker: l'interfaccia resta disponibile anche quando il server non risponde.
 // Le partite richiedono comunque il server (WebSocket): senza, l'app mostra un avviso.
-const VERSION = 'tavolo-commander-v3';
+const VERSION = 'tavolo-commander-v4';
 const SHELL = [
-  '/', '/index.html', '/style.css', '/app.js', '/builder.js', '/auto.js', '/mobile.js', '/fx.js', '/manifest.webmanifest',
+  '/', '/index.html', '/style.css', '/app.js', '/builder.js', '/auto.js', '/mobile.js', '/fx.js', '/vendor/qrcode.js', '/manifest.webmanifest',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon.svg',
 ];
 const SHARED_ASSETS = ['svgs.scryfall.io', 'fonts.googleapis.com', 'fonts.gstatic.com']; // simboli di mana e caratteri

@@ -67,6 +67,14 @@ e stampa un messaggio pronto da incollare su WhatsApp con il **link di accesso d
 chi lo apre entra senza digitare nulla. Per usare una password fissa: `TAVOLO_PASSWORD=... npm run public`.
 La prima volta Tailscale può chiedere di attivare *Funnel* con un link nel terminale.
 
+### Invitare gli amici dal gioco
+
+Al tavolo LAN il pulsante **📨 Invita** in alto, e nella sala d'attesa della partita con regole il riquadro **Invita amici**,
+aprono una finestra con il link di quel tavolo: chi lo apre entra direttamente nel tavolo giusto, senza scrivere la password né il
+nome del tavolo (deve solo scegliere il proprio nome, e la volta dopo entra da solo). Ci sono il codice QR da inquadrare col telefono
+e i pulsanti Condividi, WhatsApp e Copia link. Se il tavolo è pubblicato con Tailscale il link usa quell'indirizzo, altrimenti
+quello della rete Wi-Fi; quando ce n'è più d'uno si sceglie in cima alla finestra.
+
 Dopo 20 password sbagliate in 10 minuti il login si blocca per 10 minuti (chi è già entrato continua a giocare).
 `TAVOLO_PASSWORD=auto` genera la password a ogni avvio anche con `npm start` e `npm run remote`.
 
@@ -80,7 +88,9 @@ tutte le sue carte) e chi ha creato il tavolo (★) avvia la partita.
 - Clic su una carta in mano: la giochi (terra) o la lanci; se servono bersagli, modalità, sacrifici o scarti, il pannello
   a destra li chiede uno alla volta ed evidenzia sul tavolo le scelte valide. Il mana si paga in automatico con le tue terre.
 - Clic su un tuo permanente: le sue abilità (mana o attivate).
-- **Passa** (o Spazio) cede la priorità. Durante attacchi, blocchi, scarti, ricerche e profezie il pannello guida la scelta.
+- **Passa** (o Spazio) cede la priorità. Come in MTG Arena, quando non hai niente da giocare né abilità da attivare la priorità
+  passa da sola, così con gli amici nessuno resta ad aspettare un clic; si disattiva con "Passa da solo quando non posso fare niente".
+  Quando un avversario lancia una magia e tu puoi rispondere, il pulsante Passa lampeggia. Durante attacchi, blocchi, scarti, ricerche e profezie il pannello guida la scelta.
 - Un'azione non consentita viene rifiutata con il motivo (per esempio "Servono {2}{R}{R}" o "è entrata in questo turno").
 - **Contro il computer**: nella sala d'attesa chi ha creato il tavolo può aggiungere da 1 a 3 giocatori computer, ciascuno
   con un mazzo iniziale (scelto o a sorpresa). Si può giocare da soli sul proprio PC, oppure con amici in LAN più qualche
