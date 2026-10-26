@@ -1,0 +1,69 @@
+// Tavolo con regole automatiche lato server: lobby, avvio, viste separate, azioni legali e rifiutate
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const autoplay = require('../autoplay');
+
+function fakeSocket() {
+  return { OPEN: 1, readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); }, last(t) { return this.sent.filter((x) => x.t === t).at(-1); } };
+}
+
+async function table(room) {
+  const a = fakeSocket();
+  const b = fakeSocket();
+  await autoplay.handle(a, { t: 'autoJoin', room, name: 'Anna' });
+  await autoplay.handle(b, { t: 'autoJoin', room, name: 'Bruno' });
+  await autoplay.handle(a, { t: 'autoDeck', deckId: 'starter-0' });
+  await autoplay.handle(b, { t: 'autoDeck', deckId: 'starter-1' });
+  return { a, b };
+}
+
+test('due giocatori scelgono un mazzo iniziale e chi ha creato il tavolo avvia la partita', async () => {
+  const { a, b } = await table('t-start');
+  await autoplay.handle(b, { t: 'autoStart' });
+  assert.equal(b.last('error').code, 'NOT_HOST');
+  await autoplay.handle(a, { t: 'autoStart' });
+  const view = a.last('autoState').game;
+  assert.equal(view.players.length, 2);
+  assert.equal(view.players.find((p) => p.id === view.me).hand.length, 7);
+  assert.equal(view.players.find((p) => p.id !== view.me).hand, null);
+});
+
+test('un mazzo salvato con carte sconosciute al motore non si può scegliere', async () => {
+  const a = fakeSocket();
+  await autoplay.handle(a, { t: 'autoJoin', room: 't-deck', name: 'Anna' });
+  const decks = a.last('autoState').decks;
+  assert.ok(decks.some((d) => d.id === 'starter-3' && d.ok));
+  await autoplay.handle(a, { t: 'autoDeck', deckId: 'inesistente' });
+  assert.equal(a.last('error').code, 'NO_DECK');
+});
+
+test("un'azione illegale è rifiutata con il motivo; una legale fa avanzare la partita e finisce nel registro", async () => {
+  const { a, b } = await table('t-act');
+  await autoplay.handle(a, { t: 'autoStart' });
+  const v = a.last('autoState').game;
+  const active = v.active === v.me ? a : b;
+  const other = active === a ? b : a;
+  await autoplay.handle(other, { t: 'autoAct', action: { type: 'pass' } });
+  assert.equal(other.last('error').code, 'NO_PRIORITY');
+  await autoplay.handle(active, { t: 'autoAct', action: { type: 'pass' } });
+  assert.notEqual(active.last('autoState').game.priority, v.priority);
+});
+
+test('chi ha creato il tavolo aggiunge un giocatore computer, che gioca da solo quando tocca a lui', async () => {
+  const a = fakeSocket();
+  await autoplay.handle(a, { t: 'autoJoin', room: 't-bot', name: 'Anna' });
+  await autoplay.handle(a, { t: 'autoDeck', deckId: 'starter-0' });
+  await autoplay.handle(a, { t: 'autoAddBot', deckId: 'starter-2' });
+  const lobby = a.last('autoState').lobby;
+  assert.equal(lobby.players.length, 2);
+  assert.equal(lobby.players[1].bot, true);
+  await autoplay.handle(a, { t: 'autoStart' });
+  const g = a.last('autoState').game;
+  assert.equal(g.players.length, 2);
+  // Anna passa finché non tocca al computer, poi il computer risponde da solo dopo una breve pausa
+  for (let i = 0; i < 20 && a.last('autoState').game.priority === g.me; i++) await autoplay.handle(a, { t: 'autoAct', action: { type: 'pass' } });
+  const before = a.sent.length;
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.ok(a.sent.length > before, 'il computer ha mosso e la vista è stata aggiornata');
+  await autoplay.handle(a, { t: 'autoLeave' });
+});

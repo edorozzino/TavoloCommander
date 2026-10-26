@@ -1,0 +1,15 @@
+{
+  "name": "commander-table",
+  "version": "1.0.0",
+  "description": "Tavolo virtuale locale per partite di Magic: The Gathering in formato Commander",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "fuzz": "node scripts/fuzz.js"
+  },
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tavolo Commander</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#13151a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Commander">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Menu principale -->
+  <section id="lobby" class="lobby">
+    <div class="menu-side">
+      <header class="menu-title">
+        <svg class="sigil" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4 L40 24 L60 32 L40 40 L32 60 L24 40 L4 32 L24 24 Z" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="32" cy="32" r="7" fill="currentColor"/></svg>
+        <div><h1>Tavolo Commander</h1><p>Commander in rete locale</p></div>
+      </header>
+
+      <nav id="main-menu" class="main-menu">
+        <button class="mm-item" data-menu="auto">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.5 5.5L20 8l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg>
+          <span>Partita con regole<small>Il motore applica le regole di Magic in automatico</small></span>
+        </button>
+        <button class="mm-item" data-menu="lan">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6M10 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+          <span>Gioca in LAN<small>Siediti a un tavolo sulla tua rete</small></span>
+        </button>
+        <button id="lobby-builder" class="mm-item">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="11" height="15" rx="2"/><path d="M9 21h9a2 2 0 0 0 2-2V7"/></svg>
+          <span>Editor mazzi<small>Crea, importa e cerca le carte</small></span>
+        </button>
+        <button class="mm-item" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg>
+          <span>Online<small>In arrivo</small></span>
+        </button>
+        <button class="mm-item" data-menu="academy">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/></svg>
+          <span>Accademia<small>Impara a giocare passo per passo, con 8 lezioni guidate</small></span>
+        </button>
+      </nav>
+
+      <button id="install-app" class="mm-install hidden">⬇ Installa l'app su questo dispositivo</button>
+      <form id="join-panel" class="join-panel hidden" onsubmit="return false">
+        <h2 id="join-title">Gioca in LAN</h2>
+        <label>Il tuo nome <input id="lobby-name" maxlength="24" autocomplete="off"></label>
+        <label>Nome del tavolo <input id="lobby-room" maxlength="20" value="tavolo" autocomplete="off"></label>
+        <div class="join-actions">
+          <button type="button" id="join-back">Indietro</button>
+          <button type="button" id="lobby-join" class="primary">Siediti al tavolo</button>
+        </div>
+        <p class="muted small">Gli altri giocatori aprono lo stesso indirizzo dalla stessa Wi-Fi e scelgono lo stesso tavolo.</p>
+      </form>
+      <p id="lobby-error" class="error"></p>
+    </div>
+
+    <div class="menu-hero" aria-hidden="true">
+      <div class="hero-ring r1"></div><div class="hero-ring r2"></div><div class="hero-ring r3"></div>
+      <svg class="hero-sigil" viewBox="0 0 64 64"><path d="M32 4 L40 24 L60 32 L40 40 L32 60 L24 40 L4 32 L24 24 Z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="32" cy="32" r="5" fill="currentColor"/></svg>
+      <p class="hero-quote">Quattro giocatori, cento carte, un comandante.</p>
+    </div>
+  </section>
+
+  <!-- Partita -->
+  <section id="game" class="game hidden">
+    <header class="topbar">
+      <span class="room-label">Tavolo: <b id="room-code"></b></span>
+      <div class="actions">
+        <button data-act="builder">I miei mazzi</button>
+        <button data-act="deck">Carica mazzo</button>
+        <button data-act="startTurn" title="Stappa tutto e pesca una carta (tasto T)">Inizia turno</button>
+        <button data-act="passTurn" title="Passa il turno al prossimo giocatore (tasto P)">Passa turno</button>
+        <button data-act="draw" title="Pesca una carta (tasto D)">Pesca</button>
+        <button data-act="untapAll" title="Tasto U">Stappa tutto</button>
+        <button data-act="token">Token</button>
+        <button data-act="dice">Dado</button>
+        <button data-act="coin">Moneta</button>
+        <button data-act="more">Altro ▾</button>
+      </div>
+    </header>
+
+    <main class="table">
+      <div id="opponents" class="opponents"></div>
+      <div id="me" class="me"></div>
+    </main>
+
+    <aside class="sidebar">
+      <div id="preview" class="preview"><span class="muted">Passa sopra una carta per ingrandirla</span></div>
+      <div id="log" class="log"></div>
+      <form id="chat" class="chat"><input id="chat-input" placeholder="Scrivi un messaggio…" autocomplete="off"></form>
+    </aside>
+  </section>
+
+  <div id="menu" class="menu hidden"></div>
+  <div id="modal-backdrop" class="modal-backdrop hidden"><div id="modal" class="modal"></div></div>
+  <div id="toast" class="toast hidden"></div>
+  <div id="offline" class="offline hidden">Server non raggiungibile: avvia il server sul computer (npm start). Riprovo da solo…</div>
+
+  <section id="builder" class="builder hidden"></section>
+  <section id="auto" class="auto hidden"></section>
+
+  <script src="app.js"></script>
+  <script src="builder.js"></script>
+  <script src="auto.js"></script>
+</body>
+</html>

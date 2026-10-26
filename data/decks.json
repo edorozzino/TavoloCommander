@@ -1,0 +1,358 @@
+{
+ "e89a55b5427f": {
+  "id": "e89a55b5427f",
+  "name": "Syr Konrad",
+  "author": "Edoardo",
+  "commanders": [
+   "Syr Konrad, the Grim"
+  ],
+  "cards": [
+   {
+    "name": "Shambling Ghast",
+    "count": 1
+   },
+   {
+    "name": "Deadly Dispute",
+    "count": 1
+   },
+   {
+    "name": "Village Rites",
+    "count": 1
+   },
+   {
+    "name": "Plumb the Forbidden",
+    "count": 1
+   },
+   {
+    "name": "Malakir Rebirth",
+    "count": 1
+   },
+   {
+    "name": "Dark Ritual",
+    "count": 1
+   },
+   {
+    "name": "Culling the Weak",
+    "count": 1
+   },
+   {
+    "name": "Sol Ring",
+    "count": 1
+   },
+   {
+    "name": "Arcane Signet",
+    "count": 1
+   },
+   {
+    "name": "Mind Stone",
+    "count": 1
+   },
+   {
+    "name": "Commander's Sphere",
+    "count": 1
+   },
+   {
+    "name": "Thought Vessel",
+    "count": 1
+   },
+   {
+    "name": "Wayfarer's Bauble",
+    "count": 1
+   },
+   {
+    "name": "Burnished HartMorbid Opportunist",
+    "count": 1
+   },
+   {
+    "name": "Grim Haruspex",
+    "count": 1
+   },
+   {
+    "name": "Midnight Reaper",
+    "count": 1
+   },
+   {
+    "name": "Beast Whisperer (sostituibile con un'altra peschacarte nera come Skullclamp)",
+    "count": 1
+   },
+   {
+    "name": "Skullclamp",
+    "count": 1
+   },
+   {
+    "name": "Woe StriderViscera Seer",
+    "count": 1
+   },
+   {
+    "name": "Carrion Feeder",
+    "count": 1
+   },
+   {
+    "name": "Butcher of Malakir",
+    "count": 1
+   },
+   {
+    "name": "Fleshbag Marauder",
+    "count": 1
+   },
+   {
+    "name": "Plaguecrafter",
+    "count": 1
+   },
+   {
+    "name": "Merciless Executioner",
+    "count": 1
+   },
+   {
+    "name": "Dictate of Erebos",
+    "count": 1
+   },
+   {
+    "name": "Grave Pact",
+    "count": 1
+   },
+   {
+    "name": "Ayara, First of Locthwain",
+    "count": 1
+   },
+   {
+    "name": "Gray Merchant of Asphodel",
+    "count": 1
+   },
+   {
+    "name": "Kokusho, the Evening Star",
+    "count": 1
+   },
+   {
+    "name": "Syr Ginger, the Meal Ender (o simili)",
+    "count": 1
+   },
+   {
+    "name": "Chainer, Dementia Master",
+    "count": 1
+   },
+   {
+    "name": "Animate Dead",
+    "count": 1
+   },
+   {
+    "name": "Reanimate",
+    "count": 1
+   },
+   {
+    "name": "Exhume",
+    "count": 1
+   },
+   {
+    "name": "Victimize",
+    "count": 1
+   },
+   {
+    "name": "Living Death",
+    "count": 1
+   },
+   {
+    "name": "Rise of the Dark Realms",
+    "count": 1
+   },
+   {
+    "name": "Bojuka Bog",
+    "count": 1
+   },
+   {
+    "name": "Tormod's Crypt",
+    "count": 1
+   },
+   {
+    "name": "Soul-Guide Lantern",
+    "count": 1
+   },
+   {
+    "name": "Scavenger Grounds",
+    "count": 1
+   },
+   {
+    "name": "Nihil Spellbomb",
+    "count": 1
+   },
+   {
+    "name": "Crypt Ghast",
+    "count": 1
+   },
+   {
+    "name": "Nykthos, Shrine to Nyx",
+    "count": 1
+   },
+   {
+    "name": "Cabal Stronghold",
+    "count": 1
+   },
+   {
+    "name": "Cabal Coffers",
+    "count": 1
+   },
+   {
+    "name": "Thespian's Stage",
+    "count": 1
+   },
+   {
+    "name": "Vesuva",
+    "count": 1
+   },
+   {
+    "name": "Myriad Landscape",
+    "count": 1
+   },
+   {
+    "name": "Prismatic Vista",
+    "count": 1
+   },
+   {
+    "name": "Fabled Passage",
+    "count": 1
+   },
+   {
+    "name": "Geier Reach Sanitarium",
+    "count": 1
+   },
+   {
+    "name": "Mikokoro, Center of the Sea",
+    "count": 1
+   },
+   {
+    "name": "Reliquary Tower",
+    "count": 1
+   },
+   {
+    "name": "Witch's Cottage",
+    "count": 1
+   },
+   {
+    "name": "Castle Locthwain",
+    "count": 1
+   },
+   {
+    "name": "Bojuka Bog",
+    "count": 1
+   },
+   {
+    "name": "Ash Barrens",
+    "count": 1
+   },
+   {
+    "name": "Command Beacon",
+    "count": 1
+   },
+   {
+    "name": "Swamp",
+    "count": 30
+   },
+   {
+    "name": "Sign in Blood",
+    "count": 1
+   },
+   {
+    "name": "Night's Whisper",
+    "count": 1
+   },
+   {
+    "name": "Read the Bones",
+    "count": 1
+   },
+   {
+    "name": "Phyrexian Arena",
+    "count": 1
+   },
+   {
+    "name": "Dark Bargain",
+    "count": 1
+   },
+   {
+    "name": "Dreadhound",
+    "count": 1
+   },
+   {
+    "name": "Vengeful Dead",
+    "count": 1
+   },
+   {
+    "name": "Bastion of Remembrance",
+    "count": 1
+   },
+   {
+    "name": "Zulaport Cutthroat",
+    "count": 1
+   },
+   {
+    "name": "Blood Artist",
+    "count": 1
+   },
+   {
+    "name": "The Meathook Massacre",
+    "count": 1
+   },
+   {
+    "name": "Massacre Wurm",
+    "count": 1
+   },
+   {
+    "name": "Black Sun's Zenith",
+    "count": 1
+   },
+   {
+    "name": "Damnation",
+    "count": 1
+   },
+   {
+    "name": "Toxic Deluge",
+    "count": 1
+   },
+   {
+    "name": "Hero's Downfall",
+    "count": 1
+   },
+   {
+    "name": "Infernal Grasp",
+    "count": 1
+   },
+   {
+    "name": "Go for the Throat",
+    "count": 1
+   },
+   {
+    "name": "Doom Blade",
+    "count": 1
+   },
+   {
+    "name": "Feed the Swarm",
+    "count": 1
+   },
+   {
+    "name": "Oblivion Stone",
+    "count": 1
+   },
+   {
+    "name": "All Is Dust",
+    "count": 1
+   },
+   {
+    "name": "Nevinyrral's Disk",
+    "count": 1
+   },
+   {
+    "name": "Lightning Greaves",
+    "count": 1
+   },
+   {
+    "name": "Swiftfoot Boots",
+    "count": 1
+   },
+   {
+    "name": "Syr Konrad, the GrimBlood PetStitcher's SupplierViscera SeerSerrated Scorpion",
+    "count": 1
+   }
+  ],
+  "maybe": [],
+  "updated": 1793010169369
+ }
+}
