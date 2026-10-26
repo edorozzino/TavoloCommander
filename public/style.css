@@ -883,3 +883,41 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
   .mz, .mg-piles .mz { font-size: 13px; padding: 2px 8px; }
   .mg-side .auto-prompt, .mg-side .auto-lesson { font-size: 13px; }
 }
+
+/* ---------- Animazioni della vista Arena ---------- */
+.fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2500; overflow: hidden; }
+.fx-ghost { position: fixed !important; z-index: 1; transition: none; }
+.fx-away { animation: fx-away .4s ease-in forwards; }
+@keyframes fx-away { to { opacity: 0; translate: 0 40px; scale: .7; } }
+.fx-exile { animation: fx-exile .7s ease-out forwards; }
+@keyframes fx-exile {
+  40% { filter: brightness(2.5) saturate(0); box-shadow: 0 0 30px 10px rgba(255, 255, 255, .8); }
+  to { opacity: 0; translate: 0 -40px; scale: 1.15; filter: brightness(3) blur(4px) saturate(0); }
+}
+.fx-ember { position: fixed; width: 5px; height: 5px; border-radius: 50%; background: #ffb347; box-shadow: 0 0 6px 2px #ff6a00; }
+.fx-ring, .fx-ring-red { position: fixed; border-radius: 50%; border: 2px solid rgba(255, 230, 170, .9); animation: fx-ring .55s ease-out forwards; }
+.fx-ring-red { border-color: rgba(255, 80, 60, .9); }
+@keyframes fx-ring { from { transform: scale(.4); opacity: .9; } to { transform: scale(1.4); opacity: 0; } }
+.fx-slash {
+  position: fixed; height: 4px; border-radius: 2px; transform-origin: left center; rotate: -25deg;
+  background: linear-gradient(90deg, transparent, #fff, #ff4a3d, transparent); box-shadow: 0 0 10px #ff4a3d;
+  animation: fx-slash .4s ease-out forwards;
+}
+@keyframes fx-slash { from { scale: 0 1; opacity: 1; } 60% { scale: 1 1; opacity: 1; } to { scale: 1 1; opacity: 0; } }
+.fx-num {
+  position: fixed; translate: -50% 0; font-family: var(--display); font-size: 26px; font-weight: 800;
+  text-shadow: 0 2px 6px #000, 0 0 12px currentColor; animation: fx-num 1.1s ease-out forwards;
+}
+.fx-num-dmg { color: #ff5a4a; }
+.fx-num-gain { color: #6fe39a; }
+@keyframes fx-num { from { transform: translateY(0) scale(.6); opacity: 0; } 15% { transform: translateY(-6px) scale(1.2); opacity: 1; } to { transform: translateY(-46px) scale(1); opacity: 0; } }
+.fx-vignette { position: fixed; inset: 0; box-shadow: inset 0 0 120px 30px rgba(220, 30, 20, .55); animation: fx-fade .7s ease-out forwards; }
+@keyframes fx-fade { from { opacity: 1; } to { opacity: 0; } }
+.fx-banner { position: fixed; inset: 0; display: grid; place-items: center; }
+.fx-banner span {
+  font-family: var(--display); font-size: clamp(28px, 7vw, 64px); color: var(--accent); letter-spacing: .08em;
+  padding: 12px 48px; background: linear-gradient(90deg, transparent, rgba(0, 0, 0, .75) 20%, rgba(0, 0, 0, .75) 80%, transparent);
+  text-shadow: 0 0 20px rgba(201, 162, 74, .7); animation: fx-banner 1.5s ease-out forwards;
+}
+@keyframes fx-banner { from { opacity: 0; transform: scale(1.4); } 20% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } to { opacity: 0; transform: scale(.95); } }
+.fx-spot { position: fixed; left: 50%; top: 50%; height: min(70vh, 520px); border-radius: 4.5% / 3.3%; box-shadow: 0 0 40px rgba(201, 162, 74, .7), 0 10px 40px #000; }

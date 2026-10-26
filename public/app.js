@@ -61,8 +61,14 @@
       $('#lobby').classList.add('hidden');
       $('#game').classList.remove('hidden');
     } else if (msg.t === 'state') {
+      const prev = S;
+      if (prev) FX.capture();
       S = msg.s;
       render();
+      if (prev) {
+        FX.play({ where: (key) => findCard(key.slice(1))?.zone || null });
+        if (S.active !== prev.active && S.active === S.me) FX.banner('Il tuo turno');
+      }
     } else if (msg.t === 'error') {
       toast(msg.msg, 5000);
       $('#lobby-error').textContent = msg.msg;
@@ -206,13 +212,13 @@
     const n = count > 1 ? `<span class="mc-n">×${count}</span>` : '';
     if (c.hidden) {
       const prev = c.peekable && c.img ? ` data-img="${esc(c.img)}"` : '';
-      return `<div class="${cls.join(' ')} mc-back" ${attrs}${prev}><span class="mc-art"></span><span class="mc-name">${c.peekable ? '👁 ' + esc(c.name || '') : 'A faccia in giù'}</span>${badges}${n}</div>`;
+      return `<div class="${cls.join(' ')} mc-back" ${attrs} data-fx="i${c.iid}"${prev}><span class="mc-art"></span><span class="mc-name">${c.peekable ? '👁 ' + esc(c.name || '') : 'A faccia in giù'}</span>${badges}${n}</div>`;
     }
     const img = c.flipped && c.imgBack ? c.imgBack : c.img;
     const art = (!c.flipped && c.art) || img;
     const tax = c.isCommander && zone === 'command' && c.casts > 0 ? `<span class="tax" title="Tassa del comandante">+${c.casts * 2}</span>` : '';
     const pt = c.pt ? `<span class="mc-pt">${esc(c.pt)}</span>` : '';
-    return `<div class="${cls.join(' ')}" ${attrs} ${img ? `data-img="${esc(img)}"` : ''} title="${esc(c.name)}">
+    return `<div class="${cls.join(' ')}" ${attrs} data-fx="i${c.iid}" data-fx-token="${c.token ? 1 : 0}" ${img ? `data-img="${esc(img)}"` : ''} title="${esc(c.name)}">
       <span class="mc-art" ${art ? `style="background-image:url('${esc(art)}')"` : ''}></span><span class="mc-name">${esc(c.name)}</span>${pt}${badges}${tax}${n}</div>`;
   }
 
@@ -231,7 +237,7 @@
     const cmd = isMe ? p.command.map((c) => miniHtml(c, 'command', p.id)).join('') : '';
     const mainRow = `<div class="mg-row">${rest.map((c) => miniHtml(c, 'battlefield', p.id)).join('')}${cmd}</div>`;
     const revealed = !isMe && p.hand ? `<div class="mg-row mg-lands">${p.hand.map((c) => miniHtml(c, 'hand', p.id)).join('')}</div>` : '';
-    return `<div class="mg-field ${isMe ? 'mg-me' : 'mg-opp'}" data-drop="battlefield" data-pid="${p.id}">
+    return `<div class="mg-field ${isMe ? 'mg-me' : 'mg-opp'}" data-drop="battlefield" data-pid="${p.id}" data-fx-area="f${p.id}">
       ${isMe ? mainRow + landRow : revealed + landRow + mainRow}</div>`;
   }
 
@@ -251,7 +257,7 @@
     const tabs = others.map((p) => {
       const cmd = Math.max(0, ...Object.values(p.cmdDmg));
       return `<button class="mg-tab ${p.id === focusId ? 'on' : ''} ${S.active === p.id ? 'active' : ''}" data-focus="${p.id}" style="--pc:${p.color}">
-        <b style="color:${p.color}">${esc(p.name)}</b><span class="mg-tlife">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
+        <b style="color:${p.color}">${esc(p.name)}</b><span class="mg-tlife" data-fx-life="${p.id}" data-v="${p.life}">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
         ${p.poison ? `<span>☠${p.poison}</span>` : ''}${cmd ? `<span class="${cmd >= 21 ? 'lethal' : ''}">⚔${cmd}</span>` : ''}${p.connected ? '' : '<span class="muted">⚠</span>'}</button>`;
     }).join('');
     $('#opponents').innerHTML = `<nav class="mg-tabs">${tabs || '<span class="muted">In attesa degli altri giocatori: devono usare lo stesso nome del tavolo.</span>'}</nav>
@@ -259,16 +265,16 @@
     if (!mine) { $('#me').innerHTML = ''; return; }
     const life = (attr, d, t) => `<button class="small" data-${attr}="${d}">${t}</button>`;
     $('#me').innerHTML = `<div class="mg-mid">
-        <span class="mg-life ${S.active === S.me ? 'active' : ''}">${life('life', -1, '−')} ❤ <b>${mine.life}</b> ${life('life', 1, '+')}</span>
+        <span class="mg-life ${S.active === S.me ? 'active' : ''}" data-fx-life="${mine.id}" data-v="${mine.life}">${life('life', -1, '−')} ❤ <b>${mine.life}</b> ${life('life', 1, '+')}</span>
         <span class="stat">${life('poison', -1, '−')}☠${mine.poison}${life('poison', 1, '+')}</span>
         ${cmdChipsHtml(mine, true)}
         ${mine.hasDeck ? '' : '<b style="color:var(--accent)">Carica un mazzo per iniziare</b>'}
         <span class="grow"></span>${['command', 'library', 'graveyard', 'exile'].map((z) => compactPile(mine, z, true)).join('')}
       </div>
       ${compactField(mine, true)}
-      <div class="mg-hand" data-drop="hand" data-pile="hand" data-pid="${mine.id}" style="--n:${mine.hand.length}">${mine.hand.map((c, k) => {
+      <div class="mg-hand" data-drop="hand" data-pile="hand" data-pid="${mine.id}" data-fx-area="h${mine.id}" style="--n:${mine.hand.length}">${mine.hand.map((c, k) => {
         const img = c.flipped && c.imgBack ? c.imgBack : c.img;
-        return `<div class="card mg-hcard" style="--i:${k};${img ? `background-image:url('${esc(img)}')` : ''}" data-iid="${c.iid}" data-zone="hand" data-pid="${mine.id}" ${img ? `data-img="${esc(img)}"` : ''} title="${esc(c.name)}">${img ? '' : `<span>${esc(c.name)}</span>`}</div>`;
+        return `<div class="card mg-hcard" style="--i:${k};${img ? `background-image:url('${esc(img)}')` : ''}" data-iid="${c.iid}" data-zone="hand" data-pid="${mine.id}" data-fx="i${c.iid}" ${img ? `data-img="${esc(img)}"` : ''} title="${esc(c.name)}">${img ? '' : `<span>${esc(c.name)}</span>`}</div>`;
       }).join('') || '<span class="muted">Mano vuota</span>'}</div>`;
   }
 
@@ -358,6 +364,7 @@
     drag = null;
     if (!d.started) return;
     const target = dropTarget(e);
+    FX.hint(`i${d.iid}`, d.ghost.getBoundingClientRect()); // la carta parte da dove l'hai lasciata
     d.ghost.remove();
     d.el.classList.remove('dragging-src');
     document.querySelectorAll('.drop-hover').forEach((x) => x.classList.remove('drop-hover'));

@@ -72,10 +72,13 @@
       $('#auto').classList.remove('hidden');
     } else if (msg.t === 'autoState') {
       const wasMyDecision = myDecision();
+      const prev = G();
       M = msg;
       if (!myDecision() || (wasMyDecision && wasMyDecision.type !== myDecision()?.type)) resetDecisionUi();
       if (M.lesson?.done && !doneLessons().includes(M.lesson.id)) CT.store.set('ct-academy-done', [...doneLessons(), M.lesson.id]);
+      if (prev && G()) FX.capture();
       render();
+      if (prev && G()) animate(prev, G());
       if (M.lesson && introShown !== M.room) {
         introShown = M.room;
         CT.openModal(`<h2>Lezione ${M.lesson.n}: ${esc(M.lesson.title)}</h2><p>${esc(M.lesson.intro)}</p>
@@ -94,6 +97,21 @@
       flow = null;
       render();
     }
+  }
+
+  // ---------- Animazioni (vista Arena) ----------
+  function animate(prev, g) {
+    const zoneOf = (key) => {
+      const id = Number(key.slice(1));
+      for (const p of g.players) {
+        for (const z of ['graveyard', 'exile', 'hand', 'command', 'battlefield']) if ((p[z] || []).some((o) => o.cardId === id)) return z;
+      }
+      return g.stack.some((o) => o.cardId === id && !o.isAbility) ? 'stack' : null;
+    };
+    FX.play({ where: zoneOf });
+    if (g.active !== prev.active && g.active === M.me && !g.winner) FX.banner('Il tuo turno');
+    const seen = new Set(prev.stack.map((o) => o.id));
+    for (const o of g.stack) if (!seen.has(o.id) && !o.isAbility) FX.spotlight(o.img, '#mg-stack');
   }
 
   // ---------- Utilità ----------
@@ -331,7 +349,8 @@
     const plus = o.counters?.['+1/+1'] ? `<span class="mc-cnt">+${o.counters['+1/+1']}</span>` : '';
     const sick = o.sick ? '<span class="mc-sick">💤</span>' : '';
     const n = count > 1 ? `<span class="mc-n">×${count}</span>` : '';
-    return `<div class="${classes.join(' ')}" data-oid="${o.id}" data-zone="${zone}" title="${esc(o.name)}">
+    return `<div class="${classes.join(' ')}" data-oid="${o.id}" data-zone="${zone}" title="${esc(o.name)}"
+      data-fx="c${o.cardId}" data-fx-dmg="${o.damage || 0}" data-fx-token="${o.isToken ? 1 : 0}">
       <span class="mc-art" ${art ? `style="background-image:url('${esc(art)}')"` : ''}></span>
       <span class="mc-name">${esc(o.name)}</span>${pt}${plus}${sick}${n}</div>`;
   }
@@ -376,7 +395,7 @@
     if (p.lost) classes.push('lost');
     const cmd = Math.max(0, ...p.commanderDamage.map((c) => c.amount));
     return `<button class="${classes.join(' ')}" data-focus="${p.id}" data-player="${p.id}">
-      <b>${esc(p.name)}</b><span class="mg-tlife">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
+      <b>${esc(p.name)}</b><span class="mg-tlife" data-fx-life="${p.id}" data-v="${p.life}">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
       ${p.poison ? `<span>☠${p.poison}</span>` : ''}${cmd ? `<span class="${cmd >= 21 ? 'lethal' : ''}">⚔${cmd}</span>` : ''}</button>`;
   }
 
@@ -404,26 +423,26 @@
     const pv = previewId != null && findObject(previewId);
     return `<div class="mg">
       <nav class="mg-tabs">${others.map((p) => tabHtml(p, keys)).join('')}</nav>
-      <section class="mg-field mg-opp ${opp && keys.has(`p:${opp.id}`) ? 'hl' : ''}" data-player="${opp?.id || ''}">
+      <section class="mg-field mg-opp ${opp && keys.has(`p:${opp.id}`) ? 'hl' : ''}" data-player="${opp?.id || ''}" data-fx-area="f${opp?.id || ''}">
         ${opp ? `${fieldHtml(opp, keys, true)}<div class="mg-piles">${pilesHtml(opp)}</div>` : ''}
       </section>
       <div class="mg-mid">
-        <span class="mg-life ${keys.has(`p:${M.me}`) ? 'hl' : ''} ${g.active === M.me ? 'active' : ''}" data-player="${M.me}">❤ ${mine.life}</span>
+        <span class="mg-life ${keys.has(`p:${M.me}`) ? 'hl' : ''} ${g.active === M.me ? 'active' : ''}" data-player="${M.me}" data-fx-life="${M.me}" data-v="${mine.life}">❤ ${mine.life}</span>
         ${mine.poison ? `<span class="chip">☠ ${mine.poison}</span>` : ''}
         <span class="muted">✋${hand.length} · 📚${mine.libraryCount}</span>${pool ? `<span class="apool">${pool}</span>` : ''}
         <span class="mg-step">T${g.turn} · ${esc(step)}</span>
         <span class="mg-status ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
-        ${top ? `<span class="mg-stack" data-oid="${top.id}" data-zone="stack">Pila: ${esc(top.name)}${g.stack.length > 1 ? ` +${g.stack.length - 1}` : ''}</span>` : ''}
+        ${top ? `<span class="mg-stack" id="mg-stack" data-oid="${top.id}" data-zone="stack">Pila: ${esc(top.name)}${g.stack.length > 1 ? ` +${g.stack.length - 1}` : ''}</span>` : ''}
         <span class="grow"></span>${pilesHtml(mine)}
       </div>
-      <section class="mg-field mg-me">${fieldHtml(mine, keys, false)}</section>
-      <div class="mg-hand" style="--n:${hand.length}">${hand.map((o, k) => {
+      <section class="mg-field mg-me" data-fx-area="f${M.me}">${fieldHtml(mine, keys, false)}</section>
+      <div class="mg-hand" style="--n:${hand.length}" data-fx-area="h${M.me}">${hand.map((o, k) => {
         const c = ['mg-hcard'];
         if (keys.has(`o:${o.id}`)) c.push('hl');
         if (picks.includes(o.id)) c.push('sel');
         if (o.id === raised) c.push('raised');
         if (myPriority() && !flow && o.playable) c.push(o.playable.ok ? 'can' : 'cant');
-        return `<div class="${c.join(' ')}" style="--i:${k};${o.img ? `background-image:url('${esc(o.img)}')` : ''}" data-oid="${o.id}" data-zone="hand" title="${esc(o.name)}">${o.img ? '' : `<span>${esc(o.name)}</span>`}</div>`;
+        return `<div class="${c.join(' ')}" style="--i:${k};${o.img ? `background-image:url('${esc(o.img)}')` : ''}" data-oid="${o.id}" data-zone="hand" data-fx="c${o.cardId}" title="${esc(o.name)}">${o.img ? '' : `<span>${esc(o.name)}</span>`}</div>`;
       }).join('') || '<span class="muted">Mano vuota</span>'}</div>
       <aside class="mg-side">
         <div id="auto-preview" class="mg-preview">${pv?.img ? `<img src="${esc(pv.img)}" alt="${esc(pv.name)}">` : `<span class="muted">${CT.hover() ? 'Passa sopra una carta per vederla' : 'Tocca una carta per vederla'}</span>`}</div>
