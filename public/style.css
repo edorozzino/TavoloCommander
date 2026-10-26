@@ -587,3 +587,108 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
   background: #3a1d1d; border: 1px solid var(--danger); color: var(--text); padding: 8px 14px; border-radius: 8px; max-width: 92vw;
 }
 @media (display-mode: standalone) { .mm-install { display: none !important; } }
+
+/* ---------- Telefoni e tablet ---------- */
+.zoom-img { max-width: 100%; max-height: 72vh; border-radius: 4.5% / 3.3%; }
+.rotate-hint {
+  position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 3500;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .6);
+}
+.rh-icon { font-size: 26px; color: var(--accent); animation: rh-spin 2.4s ease-in-out infinite; }
+.rh-text { flex: 1; font-size: 13px; }
+.rh-text small { display: block; color: var(--muted); }
+@keyframes rh-spin { 0%, 20% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+
+@media (pointer: coarse) {
+  body { -webkit-tap-highlight-color: transparent; }
+  .card, .acard, .b-tile, .bs-row, .apick, img { -webkit-touch-callout: none; }
+  /* Le carte si trascinano col dito; in mano lo scorrimento orizzontale resta allo schermo */
+  .table .card { touch-action: none; }
+  .table .hand .card { touch-action: pan-x; }
+  .hand .card:hover, .auto-hand .acard:hover { transform: none; }
+  .menu button { padding: 10px 12px; }
+  .menu { min-width: 220px; max-height: calc(100vh - 16px); overflow-y: auto; }
+}
+
+/* Telefono in verticale */
+@media (max-width: 600px) {
+  :root { --cw: 54px; }
+  .topbar { gap: 8px; padding: 4px 6px; }
+  .topbar .actions, .b-top { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .topbar .actions button, .b-top > * { flex: 0 0 auto; white-space: nowrap; }
+  /* Della sequenza delle fasi resta solo quella attuale, così "Passa" è sempre a portata di dito */
+  .auto-top > * { white-space: nowrap; }
+  .astep:not(.on) { display: none; }
+  .room-label { white-space: nowrap; font-size: 12px; }
+  .sidebar { height: 34vh; }
+  /* Partita con regole: tutta la colonna scorre insieme, con la mano subito sotto il tavolo */
+  .auto-main { display: block; overflow-y: auto; }
+  .auto-table { overflow: visible; }
+  .auto-preview { display: none; }
+  .auto-hand { --aw: 64px; min-height: 96px; }
+  .auto-opps .apanel { --aw: 40px; }
+  .auto-table { --aw: 50px; }
+  .modal-backdrop { padding: 6px; }
+  .modal { padding: 12px; max-height: 96vh; }
+}
+
+/* Telefono in orizzontale: tutto il tavolo in uno schermo, con la barra laterale stretta */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root { --cw: 40px; }
+  body { overflow: hidden; }
+  .lobby, .game, .auto, .builder { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+
+  .lobby { grid-template-columns: 1fr; }
+  .menu-hero { display: none; }
+  .menu-side { padding: 12px 16px; gap: 12px; border-right: 0; }
+  .main-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mm-item { padding: 8px 12px; }
+
+  .game { grid-template-columns: 1fr 180px; grid-template-rows: auto 1fr; height: 100%; }
+  .topbar { gap: 8px; padding: 3px 6px; }
+  .topbar .actions, .b-top { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .topbar .actions button, .b-top > * { flex: 0 0 auto; white-space: nowrap; }
+  /* Della sequenza delle fasi resta solo quella attuale, così "Passa" è sempre a portata di dito */
+  .auto-top > * { white-space: nowrap; }
+  .astep:not(.on) { display: none; }
+  .topbar button, .auto-top button, .b-top button { padding: 2px 8px; font-size: 12px; }
+  .room-label { white-space: nowrap; font-size: 12px; }
+  .table { padding: 4px; gap: 4px; }
+  .opponents { flex-direction: row; gap: 4px; }
+  .opponents .panel { --cw: 28px; }
+  .opponents .hand { --cw: 22px; }
+  .battlefield { min-height: calc(var(--cw) * 2.2); }
+  .me .battlefield { min-height: calc(var(--cw) * 2.6); }
+  .panel-body { padding: 3px; gap: 3px; }
+  .hand { padding: 3px; }
+  .life { font-size: 16px; }
+  .zone { width: calc(var(--cw) + 14px); }
+  .zone .zlabel { font-size: 8px; letter-spacing: 0; }
+  .sidebar { border-left: 1px solid var(--border); border-top: 0; height: auto; }
+  .preview { display: none; }
+  .log { font-size: 11px; padding: 2px 6px; }
+  .chat { padding: 4px; }
+
+  .auto-top { padding: 3px 8px; gap: 6px; }
+  .astep { font-size: 10px; padding: 1px 4px; }
+  .auto-main { grid-template-columns: 1fr 200px; }
+  .auto-table { --aw: 38px; padding: 4px; gap: 4px; }
+  .auto-opps { flex-direction: row; gap: 4px; }
+  .auto-opps .apanel { --aw: 28px; }
+  .auto-hand { --aw: 50px; min-height: 76px; padding: 4px; }
+  .auto-side { border-left: 1px solid var(--border); border-top: 0; padding: 6px; font-size: 12px; }
+  .auto-preview { display: none; }
+  .auto-log { max-height: none; min-height: 60px; }
+  .auto-lobby { margin: 12px auto; }
+
+  .builder { grid-template-columns: 1fr 280px; grid-template-rows: auto 1fr; overflow: hidden; }
+  .b-info { display: none; }
+  .b-search { height: auto; border-top: 0; border-left: 1px solid var(--border); }
+  .b-top { padding: 3px 6px; }
+
+  .modal-backdrop { padding: 6px; }
+  .modal { padding: 10px 14px; max-height: 96vh; }
+  .zoom-img { max-height: 76vh; }
+}

@@ -627,6 +627,7 @@
         if (zone !== 'cards') items.push(['Sposta nel mazzo', () => move(zone, 'cards', name)]);
         if (zone !== 'maybe') items.push(['Sposta in "Forse"', () => move(zone, 'maybe', name)]);
       }
+      if (info[name]?.img) items.push('-', ['Ingrandisci', () => CT.zoom(info[name].img, name)]);
       CT.showMenu(e.clientX, e.clientY, name, items);
     });
 

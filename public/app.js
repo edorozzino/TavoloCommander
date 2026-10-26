@@ -776,6 +776,12 @@
     hideLobby: () => $('#lobby').classList.add('hidden'),
     inGame: () => !!S,
     playerName: () => me()?.name || store.get('ct-name', ''),
+    // Carta ingrandita a tutto schermo (sui telefoni si apre con la pressione lunga)
+    zoom: (img, caption = '') => {
+      viewer = null;
+      openModal(`<div class="row" style="justify-content:center"><img src="${esc(img)}" alt="" class="zoom-img"></div>
+        ${caption ? `<p class="muted">${esc(caption)}</p>` : ''}<div class="row"><span class="grow"></span><button data-close>Chiudi</button></div>`);
+    },
   };
 
   // ---------- App installabile (PWA) ----------
