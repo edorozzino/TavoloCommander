@@ -76,6 +76,11 @@
   // ---------- Doppio tocco → doppio clic ----------
   // I browser mobili gestiscono il doppio tocco in modo diverso tra loro: lo generiamo noi, sempre uguale
   let lastTap = null;
+  // la carta toccata può essere ridisegnata tra un tocco e l'altro: la riconosciamo dal suo identificativo
+  const tapKey = (el) => {
+    const card = el.closest('[data-iid], [data-oid], [data-bname], [data-pile]');
+    return card ? `${card.dataset.iid || ''}|${card.dataset.oid || ''}|${card.dataset.bname || ''}|${card.dataset.pile || ''}|${card.dataset.pid || ''}` : el;
+  };
   document.addEventListener('dblclick', (e) => {
     if (e.isTrusted && lastTap?.touch) e.stopImmediatePropagation();
   }, true);
@@ -86,14 +91,28 @@
     }
     const now = Date.now();
     const target = e.target;
-    if (lastTap && now - lastTap.t < DOUBLE_TAP && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30 && lastTap.target === target) {
+    const key = tapKey(target);
+    if (lastTap && now - lastTap.t < DOUBLE_TAP && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30 && lastTap.key === key) {
       lastTap = { touch: true, t: 0 };
-      // dopo il clic del secondo tocco, come farebbe il browser
-      setTimeout(() => target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY })), 0);
+      pendingDbl = { x: e.clientX, y: e.clientY, target };
+      fallback = setTimeout(fireDbl, 350); // se il clic del secondo tocco non arriva
       return;
     }
-    lastTap = { touch: true, t: now, x: e.clientX, y: e.clientY, target };
+    lastTap = { touch: true, t: now, x: e.clientX, y: e.clientY, key };
   }, true);
+
+  // Il doppio clic parte dopo che la pagina ha gestito il clic del secondo tocco, come farebbe il browser
+  let pendingDbl = null;
+  let fallback = null;
+  function fireDbl() {
+    clearTimeout(fallback);
+    if (!pendingDbl) return;
+    const { x, y, target } = pendingDbl;
+    pendingDbl = null;
+    const el = document.elementFromPoint(x, y) || target;
+    el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+  }
+  window.addEventListener('click', () => { if (pendingDbl) setTimeout(fireDbl, 0); });
 
   // ---------- Invito a ruotare il telefono ----------
   const phone = matchMedia('(pointer: coarse) and (max-width: 600px) and (orientation: portrait)');

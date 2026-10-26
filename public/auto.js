@@ -31,6 +31,11 @@
   let picks = []; // carte scelte per scarti, rimesse in cima, ricerche
   let scryBottom = new Set();
   let lessonList = null; // elenco delle lezioni dell'Accademia
+  // Schermata compatta (telefoni): avversario mostrato in grande, carta sollevata dalla mano, carta in anteprima
+  let focusId = null;
+  let lastActive = null;
+  let raised = null;
+  let previewId = null;
   let introShown = null; // lezione di cui si è già mostrata l'introduzione
   const doneLessons = () => CT.store.get('ct-academy-done', []);
 
@@ -155,7 +160,7 @@
   function render() {
     const root = $('#auto');
     if (!M) { root.innerHTML = ''; return; }
-    root.innerHTML = G() ? gameHtml() : lobbyHtml();
+    root.innerHTML = G() ? (CT.compact() ? compactHtml() : gameHtml()) : lobbyHtml();
     if (G()) $('#auto-log')?.scrollTo(0, 1e9);
   }
 
@@ -275,6 +280,7 @@
         <div class="asteps">${stepTrack()}</div>
         <span class="astatus ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
         <button class="primary" data-auto="pass" ${myPriority() ? '' : 'disabled'} title="Passa la priorità (Spazio)">Passa</button>
+        <button data-auto="arena" title="Torna alla vista Arena">Vista Arena</button>
         <button data-auto="leave">Esci</button>
       </header>
       <div class="auto-main">
@@ -292,13 +298,146 @@
           <h4>Registro</h4>${logHtml()}
         </aside>
       </div>
-      ${M.lesson?.done || M.lesson?.failed ? `<div class="auto-over"><div>
+      ${overlaysHtml()}`;
+  }
+
+  // Fine lezione o fine partita
+  function overlaysHtml() {
+    const g = G();
+    return `${M.lesson?.done || M.lesson?.failed ? `<div class="auto-over"><div>
         <h2>${M.lesson.done ? 'Lezione superata!' : 'Riproviamo'}</h2><p>${esc(M.lesson.done ? M.lesson.goal : M.lesson.hint)}</p>
         <div class="row" style="justify-content:center">
           ${M.lesson.done && M.lesson.next ? `<button class="primary" data-lesson="${M.lesson.next}">Lezione successiva</button>` : ''}
           ${M.lesson.failed ? `<button class="primary" data-lesson="${M.lesson.id}">Riprova</button>` : ''}
           <button data-auto="leave">Torna all'Accademia</button></div></div></div>` : ''}
       ${g.winner && !M.lesson ? `<div class="auto-over"><div><h2>${esc(playerName(g.winner))} vince la partita!</h2><button class="primary" data-auto="leave">Torna al menu</button></div></div>` : ''}`;
+  }
+
+  // ---------- Schermata compatta per i telefoni ----------
+  // Carta piccola con la sola illustrazione, il nome sopra e forza/costituzione in basso
+  function miniHtml(o, zone, keys, count = 1) {
+    const classes = ['mc'];
+    if (zone === 'command') classes.push('cmdzone');
+    if (o.tapped) classes.push('tapped');
+    if (keys.has(`o:${o.id}`)) classes.push('hl');
+    if (attack?.pairs.has(o.id) || block?.selected === o.id || block?.pairs.some((p) => p.blocker === o.id) || picks.includes(o.id)) classes.push('sel');
+    if (G().combat?.attackers.some((a) => a.id === o.id)) classes.push('attacking');
+    if (myPriority() && !flow) {
+      const ab = (o.abilities || []).filter((a) => a.playable);
+      if (o.playable || ab.length) classes.push(o.playable?.ok || ab.some((a) => a.playable.ok) ? 'can' : 'cant');
+    }
+    const art = o.art || o.img;
+    const pt = o.power != null ? `<span class="mc-pt ${o.damage ? 'hurt' : ''}">${o.power}/${o.toughness - (o.damage || 0)}</span>` : '';
+    const plus = o.counters?.['+1/+1'] ? `<span class="mc-cnt">+${o.counters['+1/+1']}</span>` : '';
+    const sick = o.sick ? '<span class="mc-sick">💤</span>' : '';
+    const n = count > 1 ? `<span class="mc-n">×${count}</span>` : '';
+    return `<div class="${classes.join(' ')}" data-oid="${o.id}" data-zone="${zone}" title="${esc(o.name)}">
+      <span class="mc-art" ${art ? `style="background-image:url('${esc(art)}')"` : ''}></span>
+      <span class="mc-name">${esc(o.name)}</span>${pt}${plus}${sick}${n}</div>`;
+  }
+
+  // Terre uguali nello stesso stato in un'unica carta con il numero: occupano molto meno spazio
+  function landGroups(lands, keys) {
+    const groups = new Map();
+    for (const o of lands) {
+      const special = keys.has(`o:${o.id}`) || picks.includes(o.id) || attack?.pairs.has(o.id);
+      const k = special ? `#${o.id}` : `${o.name}|${o.tapped}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(o);
+    }
+    return [...groups.values()];
+  }
+
+  function fieldHtml(p, keys, mirrored) {
+    const lands = p.battlefield.filter((o) => o.types.includes('Land') && !o.types.includes('Creature'));
+    const others = p.battlefield.filter((o) => !lands.includes(o));
+    const creatures = others.filter((o) => o.types.includes('Creature'));
+    const rest = others.filter((o) => !o.types.includes('Creature'));
+    const main = `<div class="mg-row">${[...creatures, ...rest].map((o) => miniHtml(o, 'battlefield', keys)).join('')}
+      ${p.command.map((o) => miniHtml(o, 'command', keys)).join('')}</div>`;
+    const landRow = `<div class="mg-row mg-lands">${landGroups(lands, keys).map((gr) => miniHtml(gr.find((o) => !o.tapped) || gr[0], 'battlefield', keys, gr.length)).join('')}</div>`;
+    return mirrored ? landRow + main : main + landRow;
+  }
+
+  function pilesHtml(p) {
+    return `<button class="small" data-pile="graveyard" data-of="${p.id}" title="Cimitero">🪦 ${p.graveyard.length}</button>
+      ${p.exile.length ? `<button class="small" data-pile="exile" data-of="${p.id}" title="Esilio">🌀 ${p.exile.length}</button>` : ''}`;
+  }
+
+  function tabHtml(p, keys) {
+    const g = G();
+    const classes = ['mg-tab'];
+    if (p.id === focusId) classes.push('on');
+    if (g.active === p.id) classes.push('active');
+    if (g.priority === p.id || g.decision?.player === p.id) classes.push('waiting');
+    if (keys.has(`p:${p.id}`) || p.battlefield.some((o) => keys.has(`o:${o.id}`))) classes.push('hl');
+    if (attack?.defender === p.id) classes.push('defender');
+    if (g.combat?.attackers.some((a) => a.controller === p.id && a.defender === M.me)) classes.push('threat');
+    if (p.lost) classes.push('lost');
+    const cmd = Math.max(0, ...p.commanderDamage.map((c) => c.amount));
+    return `<button class="${classes.join(' ')}" data-focus="${p.id}" data-player="${p.id}">
+      <b>${esc(p.name)}</b><span class="mg-tlife">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
+      ${p.poison ? `<span>☠${p.poison}</span>` : ''}${cmd ? `<span class="${cmd >= 21 ? 'lethal' : ''}">⚔${cmd}</span>` : ''}</button>`;
+  }
+
+  function compactHtml() {
+    const g = G();
+    const keys = highlightKeys();
+    const mine = me();
+    const i = g.players.findIndex((p) => p.id === M.me);
+    const others = [...g.players.slice(i + 1), ...g.players.slice(0, i)];
+    // l'avversario in grande segue chi è di turno, finché non ne scegli un altro
+    if (g.active !== lastActive) {
+      lastActive = g.active;
+      if (g.active !== M.me) focusId = g.active;
+    }
+    if (!others.some((p) => p.id === focusId)) focusId = (others.find((p) => !p.lost) || others[0])?.id;
+    const opp = others.find((p) => p.id === focusId);
+    if (raised && !(mine.hand || []).some((o) => o.id === raised)) raised = null;
+    const step = STEPS.find(([id]) => g.step === id || (id === 'combatDamage' && g.step === 'firstStrikeDamage'))?.[1] || '';
+    const status = g.winner ? `${esc(playerName(g.winner))} vince!`
+      : g.decision ? (g.decision.player === M.me ? `Tocca a te: ${DECISION_NAMES[g.decision.type] || g.decision.type}` : `Attendi ${esc(playerName(g.decision.player))}`)
+        : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`;
+    const pool = Object.entries(mine.pool).filter(([, n]) => n).map(([c, n]) => `${mana(`{${c}}`)}${n}`).join(' ');
+    const hand = mine.hand || [];
+    const top = g.stack[g.stack.length - 1];
+    const pv = previewId != null && findObject(previewId);
+    return `<div class="mg">
+      <nav class="mg-tabs">${others.map((p) => tabHtml(p, keys)).join('')}</nav>
+      <section class="mg-field mg-opp ${opp && keys.has(`p:${opp.id}`) ? 'hl' : ''}" data-player="${opp?.id || ''}">
+        ${opp ? `${fieldHtml(opp, keys, true)}<div class="mg-piles">${pilesHtml(opp)}</div>` : ''}
+      </section>
+      <div class="mg-mid">
+        <span class="mg-life ${keys.has(`p:${M.me}`) ? 'hl' : ''} ${g.active === M.me ? 'active' : ''}" data-player="${M.me}">❤ ${mine.life}</span>
+        ${mine.poison ? `<span class="chip">☠ ${mine.poison}</span>` : ''}
+        <span class="muted">✋${hand.length} · 📚${mine.libraryCount}</span>${pool ? `<span class="apool">${pool}</span>` : ''}
+        <span class="mg-step">T${g.turn} · ${esc(step)}</span>
+        <span class="mg-status ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
+        ${top ? `<span class="mg-stack" data-oid="${top.id}" data-zone="stack">Pila: ${esc(top.name)}${g.stack.length > 1 ? ` +${g.stack.length - 1}` : ''}</span>` : ''}
+        <span class="grow"></span>${pilesHtml(mine)}
+      </div>
+      <section class="mg-field mg-me">${fieldHtml(mine, keys, false)}</section>
+      <div class="mg-hand" style="--n:${hand.length}">${hand.map((o, k) => {
+        const c = ['mg-hcard'];
+        if (keys.has(`o:${o.id}`)) c.push('hl');
+        if (picks.includes(o.id)) c.push('sel');
+        if (o.id === raised) c.push('raised');
+        if (myPriority() && !flow && o.playable) c.push(o.playable.ok ? 'can' : 'cant');
+        return `<div class="${c.join(' ')}" style="--i:${k};${o.img ? `background-image:url('${esc(o.img)}')` : ''}" data-oid="${o.id}" data-zone="hand" title="${esc(o.name)}">${o.img ? '' : `<span>${esc(o.name)}</span>`}</div>`;
+      }).join('') || '<span class="muted">Mano vuota</span>'}</div>
+      <aside class="mg-side">
+        <div id="auto-preview" class="mg-preview">${pv?.img ? `<img src="${esc(pv.img)}" alt="${esc(pv.name)}">` : `<span class="muted">${CT.hover() ? 'Passa sopra una carta per vederla' : 'Tocca una carta per vederla'}</span>`}</div>
+        ${M.lesson ? `<div class="auto-lesson"><b>${esc(M.lesson.goal)}</b><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
+        <div class="auto-prompt">${promptHtml()}</div>
+        <div class="mg-actions">
+          <button class="primary mg-pass" data-auto="pass" ${myPriority() ? '' : 'disabled'}>Passa</button>
+          <button data-auto="log" title="Registro e Pila">📜</button>
+          <button data-auto="classic" title="Vista classica">▦</button>
+          <button data-auto="leave" title="Esci">✕</button>
+        </div>
+      </aside>
+      ${overlaysHtml()}
+    </div>`;
   }
 
   // Istruzioni e pulsanti per il passo corrente
@@ -329,6 +468,7 @@
     const d = myDecision();
     if (d) return decisionPrompt(d);
     if (g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.decision.player))} finisca di ${DECISION_NAMES[g.decision.type] || 'decidere'}…</p>`;
+    if (myPriority() && CT.compact()) return '<p><b>Hai la priorità.</b> Tocca una carta per giocarla o un tuo permanente per le abilità, oppure Passa.</p>';
     if (myPriority()) {
       return `<p><b>Hai la priorità.</b> Clicca una carta in mano per giocarla o lanciarla, un tuo permanente per usarne le abilità,
         oppure passa (Spazio). Il mana si paga in automatico con le tue terre.</p>`;
@@ -458,6 +598,14 @@
     const d = myDecision();
     const step = flow?.steps[flow.i];
     if (btn?.dataset.auto) return button(btn.dataset.auto);
+    if (btn?.dataset.focus) {
+      // una linguetta: bersaglio o difensore se serve, altrimenti mostra quel giocatore in grande
+      const pid = btn.dataset.focus;
+      const keys = highlightKeys();
+      focusId = pid;
+      if (keys.has(`p:${pid}`) || (attack && pid !== M.me)) return clickPlayer(pid);
+      return render();
+    }
     if (btn?.dataset.removeBot) return send({ t: 'autoRemoveBot', pid: btn.dataset.removeBot });
     if (btn?.dataset.lesson) { flow = null; resetDecisionUi(); return send({ t: 'lessonStart', id: btn.dataset.lesson, name: session?.name || 'Allievo' }); }
     if (btn?.dataset.mode && step?.kind === 'mode') {
@@ -505,6 +653,10 @@
       case 'menu': lessonList = null; $('#auto').classList.add('hidden'); CT.showLobby(); return undefined;
       case 'pass': if (myPriority()) act({ type: 'pass' }); return undefined;
       case 'cancel': flow = null; return render();
+      case 'classic': return CT.setView('classic');
+      case 'arena': return CT.setView('arena');
+      case 'log': return CT.openModal(`<h2>Pila</h2><div class="auto-stack">${stackHtml()}</div><h2>Registro</h2>${logHtml()}
+        <div class="row"><span class="grow"></span><button data-close>Chiudi</button></div>`);
       case 'no-target': return act({ type: 'chooseTarget', target: null });
       case 'confirm-attack':
         return act({ type: 'declareAttackers', attackers: [...attack.pairs].map(([object, defender]) => ({ object, defender })) });
@@ -561,6 +713,13 @@
     }
     const d = myDecision();
     if (d) return clickDuringDecision(d, o, zone);
+    // sul telefono il primo tocco solleva la carta dalla mano (per leggerla), il secondo la gioca
+    if (zone === 'hand' && CT.compact() && !CT.hover() && raised !== id) {
+      raised = id;
+      previewId = id;
+      return render();
+    }
+    raised = null;
     if (zone === 'hand' || (zone === 'command' && o.owner === M.me)) return castCard(o);
     if (zone === 'battlefield' && o.controller === M.me) return abilityMenu(o, e.clientX, e.clientY);
     return undefined;
@@ -615,6 +774,11 @@
     if (!el || !pv) return;
     const o = findObject(Number(el.dataset.oid));
     if (!o) return;
+    previewId = o.id;
+    if (CT.compact()) {
+      pv.innerHTML = o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">` : `<b>${esc(o.name)}</b>`;
+      return;
+    }
     const kws = (o.keywords || []).map((k) => KW[k] || k).join(', ');
     pv.innerHTML = o.img
       ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">${kws ? `<div class="muted">${esc(kws)}</div>` : ''}`
@@ -630,6 +794,8 @@
     if (e.code === 'Space' && myPriority() && !flow) { e.preventDefault(); act({ type: 'pass' }); }
     if (e.key === 'Escape' && flow) { flow = null; render(); }
   });
+
+  window.addEventListener('ct-compact', () => { if (G()) render(); });
 
   window.Auto = { join, onOpen, handle, academy, active: () => (!!M || !!lessonList) && !$('#auto').classList.contains('hidden') };
 })();

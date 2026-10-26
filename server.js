@@ -227,6 +227,7 @@ function makeCard(info, owner, extra = {}) {
     name: info.name,
     img: info.img,
     imgBack: info.imgBack,
+    art: info.art || null,
     type: info.type,
     pt: info.power != null ? `${info.power}/${info.toughness}` : null,
     owner,

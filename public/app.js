@@ -18,6 +18,20 @@
 
   const ZONE_LABEL = { library: 'Grimorio', hand: 'Mano', battlefield: 'Campo', graveyard: 'Cimitero', exile: 'Esilio', command: 'Comando' };
 
+  // Vista Arena, predefinita su telefono e computer: un avversario alla volta, carte con la sola illustrazione,
+  // mano a ventaglio. Dal menu si può tornare alla vista classica (tavolo libero con tutti gli avversari).
+  const arenaView = () => store.get('ct-view', 'arena') !== 'classic';
+  // senza mouse il primo tocco solleva la carta dalla mano, col mouse basta passarci sopra
+  const hoverQuery = matchMedia('(hover: hover)');
+  const applyView = () => document.documentElement.classList.toggle('compact', arenaView());
+  applyView();
+  function setView(view) {
+    store.set('ct-view', view);
+    applyView();
+    if (S) render();
+    window.dispatchEvent(new Event('ct-compact'));
+  }
+
   // ---------- Connessione ----------
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -175,6 +189,89 @@
     return `<div class="panel${active}" style="--pc:${p.color}">${head}<div class="panel-body">${bf}${zones}</div>${hand}</div>`;
   }
 
+  // ---------- Schermata compatta per i telefoni ----------
+  let focusId = null;
+  let lastActive = null;
+
+  // Carta piccola con la sola illustrazione e il nome sopra; resta una .card, quindi si trascina e si tocca come le altre
+  function miniHtml(c, zone, pid, count = 1) {
+    const attrs = `data-iid="${c.iid}" data-zone="${zone}" data-pid="${pid}"`;
+    const cls = ['card', 'mc'];
+    if (c.tapped) cls.push('tapped');
+    if (c.token) cls.push('token-badge');
+    if (zone === 'command') cls.push('cmdzone');
+    const counters = Object.entries(c.counters || {})
+      .map(([k, v]) => `<span class="counter">${esc(k === '+1/+1' ? (v > 0 ? '+' + v + '/+' + v : v + '/' + v) : k + ' ' + v)}</span>`).join('');
+    const badges = counters ? `<div class="counters">${counters}</div>` : '';
+    const n = count > 1 ? `<span class="mc-n">×${count}</span>` : '';
+    if (c.hidden) {
+      const prev = c.peekable && c.img ? ` data-img="${esc(c.img)}"` : '';
+      return `<div class="${cls.join(' ')} mc-back" ${attrs}${prev}><span class="mc-art"></span><span class="mc-name">${c.peekable ? '👁 ' + esc(c.name || '') : 'A faccia in giù'}</span>${badges}${n}</div>`;
+    }
+    const img = c.flipped && c.imgBack ? c.imgBack : c.img;
+    const art = (!c.flipped && c.art) || img;
+    const tax = c.isCommander && zone === 'command' && c.casts > 0 ? `<span class="tax" title="Tassa del comandante">+${c.casts * 2}</span>` : '';
+    const pt = c.pt ? `<span class="mc-pt">${esc(c.pt)}</span>` : '';
+    return `<div class="${cls.join(' ')}" ${attrs} ${img ? `data-img="${esc(img)}"` : ''} title="${esc(c.name)}">
+      <span class="mc-art" ${art ? `style="background-image:url('${esc(art)}')"` : ''}></span><span class="mc-name">${esc(c.name)}</span>${pt}${badges}${tax}${n}</div>`;
+  }
+
+  function compactField(p, isMe) {
+    const isLand = (c) => /\bLand\b/.test(c.type || '') && !/\bCreature\b/.test(c.type || '');
+    const lands = p.battlefield.filter((c) => !c.hidden && isLand(c));
+    const rest = p.battlefield.filter((c) => !lands.includes(c));
+    // terre uguali e nello stesso stato in una carta sola col numero (tocchi o trascini la prima)
+    const groups = new Map();
+    for (const c of lands) {
+      const k = Object.keys(c.counters || {}).length ? c.iid : `${c.name}|${c.tapped}|${c.flipped}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(c);
+    }
+    const landRow = `<div class="mg-row mg-lands">${[...groups.values()].map((g) => miniHtml(g[0], 'battlefield', p.id, g.length)).join('')}</div>`;
+    const cmd = isMe ? p.command.map((c) => miniHtml(c, 'command', p.id)).join('') : '';
+    const mainRow = `<div class="mg-row">${rest.map((c) => miniHtml(c, 'battlefield', p.id)).join('')}${cmd}</div>`;
+    const revealed = !isMe && p.hand ? `<div class="mg-row mg-lands">${p.hand.map((c) => miniHtml(c, 'hand', p.id)).join('')}</div>` : '';
+    return `<div class="mg-field ${isMe ? 'mg-me' : 'mg-opp'}" data-drop="battlefield" data-pid="${p.id}">
+      ${isMe ? mainRow + landRow : revealed + landRow + mainRow}</div>`;
+  }
+
+  function compactPile(p, zone, isMe) {
+    const icon = { library: '📚', graveyard: '🪦', exile: '🌀', command: '👑' }[zone];
+    const count = zone === 'library' ? p.libraryCount : (p[zone] || []).length;
+    return `<span class="mz" data-pile="${zone}" data-pid="${p.id}" ${isMe ? `data-drop="${zone}"` : ''} title="${ZONE_LABEL[zone]}">${icon} ${count}</span>`;
+  }
+
+  function compactRender(mine, others) {
+    if (S.active !== lastActive) {
+      lastActive = S.active;
+      if (S.active !== S.me && others.some((p) => p.id === S.active)) focusId = S.active;
+    }
+    if (!others.some((p) => p.id === focusId)) focusId = others[0]?.id;
+    const opp = others.find((p) => p.id === focusId);
+    const tabs = others.map((p) => {
+      const cmd = Math.max(0, ...Object.values(p.cmdDmg));
+      return `<button class="mg-tab ${p.id === focusId ? 'on' : ''} ${S.active === p.id ? 'active' : ''}" data-focus="${p.id}" style="--pc:${p.color}">
+        <b style="color:${p.color}">${esc(p.name)}</b><span class="mg-tlife">❤ ${p.life}</span><span class="muted">✋${p.handCount}</span>
+        ${p.poison ? `<span>☠${p.poison}</span>` : ''}${cmd ? `<span class="${cmd >= 21 ? 'lethal' : ''}">⚔${cmd}</span>` : ''}${p.connected ? '' : '<span class="muted">⚠</span>'}</button>`;
+    }).join('');
+    $('#opponents').innerHTML = `<nav class="mg-tabs">${tabs || '<span class="muted">In attesa degli altri giocatori: devono usare lo stesso nome del tavolo.</span>'}</nav>
+      ${opp ? `<div class="mg-oppwrap">${compactField(opp, false)}<div class="mg-piles">${['graveyard', 'exile'].map((z) => compactPile(opp, z, false)).join('')}</div></div>` : ''}`;
+    if (!mine) { $('#me').innerHTML = ''; return; }
+    const life = (attr, d, t) => `<button class="small" data-${attr}="${d}">${t}</button>`;
+    $('#me').innerHTML = `<div class="mg-mid">
+        <span class="mg-life ${S.active === S.me ? 'active' : ''}">${life('life', -1, '−')} ❤ <b>${mine.life}</b> ${life('life', 1, '+')}</span>
+        <span class="stat">${life('poison', -1, '−')}☠${mine.poison}${life('poison', 1, '+')}</span>
+        ${cmdChipsHtml(mine, true)}
+        ${mine.hasDeck ? '' : '<b style="color:var(--accent)">Carica un mazzo per iniziare</b>'}
+        <span class="grow"></span>${['command', 'library', 'graveyard', 'exile'].map((z) => compactPile(mine, z, true)).join('')}
+      </div>
+      ${compactField(mine, true)}
+      <div class="mg-hand" data-drop="hand" data-pile="hand" data-pid="${mine.id}" style="--n:${mine.hand.length}">${mine.hand.map((c, k) => {
+        const img = c.flipped && c.imgBack ? c.imgBack : c.img;
+        return `<div class="card mg-hcard" style="--i:${k};${img ? `background-image:url('${esc(img)}')` : ''}" data-iid="${c.iid}" data-zone="hand" data-pid="${mine.id}" ${img ? `data-img="${esc(img)}"` : ''} title="${esc(c.name)}">${img ? '' : `<span>${esc(c.name)}</span>`}</div>`;
+      }).join('') || '<span class="muted">Mano vuota</span>'}</div>`;
+  }
+
   function render() {
     if (!S) return;
     rememberCommanders();
@@ -184,8 +281,11 @@
     // Avversari nell'ordine di turno a partire da chi siede dopo di me
     const i = S.order.indexOf(S.me);
     for (let k = 1; k < S.order.length; k++) others.push(playerById(S.order[(i + k) % S.order.length]));
-    $('#opponents').innerHTML = others.map((p) => panelHtml(p, false)).join('');
-    $('#me').innerHTML = mine ? panelHtml(mine, true) : '';
+    if (arenaView()) compactRender(mine, others);
+    else {
+      $('#opponents').innerHTML = others.map((p) => panelHtml(p, false)).join('');
+      $('#me').innerHTML = mine ? panelHtml(mine, true) : '';
+    }
     renderLog();
     if (viewer) renderViewer();
   }
@@ -264,7 +364,9 @@
     if (!target) return;
     const zone = target.dataset.drop;
     const to = { zone, player: target.dataset.pid };
-    if (zone === 'battlefield') {
+    if (zone === 'battlefield' && arenaView()) {
+      Object.assign(to, nextSpot(d.f.card)); // sul telefono le carte stanno in file: la posizione la sceglie l'app
+    } else if (zone === 'battlefield') {
       const r = target.getBoundingClientRect();
       to.x = ((e.clientX - d.ox - r.left) / r.width) * 100;
       to.y = ((e.clientY - d.oy - r.top) / r.height) * 100;
@@ -307,6 +409,15 @@
     if (btn?.dataset.cmd) return act('cmdDmg', { iid: btn.dataset.cmd, delta: Number(btn.dataset.delta) * (e.shiftKey ? 5 : 1) });
     if (btn?.dataset.act) return topAction(btn.dataset.act, btn);
 
+    const tab = t.closest('[data-focus]');
+    if (tab) { focusId = tab.dataset.focus; return render(); }
+    const hcard = !hoverQuery.matches && t.closest('.mg-hcard');
+    if (hcard) { // il primo tocco solleva la carta per leggerla; doppio tocco o trascinamento la giocano
+      const was = hcard.classList.contains('raised');
+      document.querySelectorAll('.mg-hcard.raised').forEach((x) => x.classList.remove('raised'));
+      if (!was) hcard.classList.add('raised');
+      return;
+    }
     if (t.closest('.card[data-iid]') && !t.closest('[data-pile="library"]')) return;
     const pile = t.closest('[data-pile]');
     if (!pile || pile.dataset.pile === 'hand') return;
@@ -479,6 +590,7 @@
           [me().handRevealed ? 'Nascondi la mano' : 'Rivela la mano a tutti', () => act('revealHand')],
           ['Ricomincia la partita (stesso mazzo)', () => { if (confirm('Rimettere tutte le tue carte nel mazzo e ripartire da 40 vita?')) act('restart'); }],
           '-',
+          [arenaView() ? 'Vista classica (tavolo libero)' : 'Vista Arena', () => setView(arenaView() ? 'classic' : 'arena')],
           ['Come far entrare gli altri', () => toast(`Gli altri giocatori devono aprire http://${location.host} dalla stessa rete Wi-Fi e usare il tavolo "${S.code}". (Se l'indirizzo dice localhost, usa l'IP mostrato nel terminale del server.)`, 10000)],
           ['Cambia nome…', () => { const n = prompt('Nuovo nome:', me().name); if (n) { act('rename', { name: n }); session.name = n; store.set('ct-session', session); } }],
           ['Lascia il tavolo', () => { if (confirm('Lasciare il tavolo? Le tue carte verranno rimosse.')) act('leave'); }],
@@ -770,6 +882,9 @@
 
   // Funzioni condivise con l'editor dei mazzi (builder.js)
   window.CT = {
+    compact: arenaView,
+    hover: () => hoverQuery.matches,
+    setView,
     act, esc, toast, store, parseDeck, guessCommanders, showMenu, hideMenu, openModal, closeModal,
     send: (obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); },
     showLobby: () => { $('#lobby').classList.remove('hidden'); showJoin(false); },
