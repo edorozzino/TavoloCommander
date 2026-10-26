@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "remote": "node server.js --tailscale",
+    "public": "node server.js --funnel",
     "test": "node --test test/*.test.js",
     "fuzz": "node scripts/fuzz.js"
   },

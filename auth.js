@@ -4,6 +4,29 @@ const crypto = require('crypto');
 
 const COOKIE = 'tavolo_auth';
 const ONE_YEAR = 365 * 24 * 3600;
+// Dopo troppi tentativi sbagliati il login si blocca per tutti: dietro Tailscale Funnel ogni richiesta arriva dallo stesso indirizzo
+const MAX_FAILURES = 20;
+const FAILURE_WINDOW = 10 * 60 * 1000;
+const LOCK_TIME = 10 * 60 * 1000;
+const WORDS = [
+  'drago', 'goblin', 'elfo', 'fata', 'golem', 'sfinge', 'idra', 'grifone', 'angelo', 'demone', 'vampiro', 'zombie',
+  'spirito', 'titano', 'kraken', 'fenice', 'chimera', 'gigante', 'nano', 'troll', 'orco', 'licantropo', 'leviatano', 'basilisco',
+  'mago', 'strega', 'cavaliere', 'paladino', 'ladro', 'monaco', 'druido', 'sciamano', 'bardo', 'chierico', 'guerriero', 'arciere',
+  'spada', 'scudo', 'lancia', 'ascia', 'arco', 'martello', 'corona', 'anello', 'amuleto', 'bacchetta', 'tomo', 'pergamena',
+  'palude', 'isola', 'montagna', 'foresta', 'pianura', 'deserto', 'vulcano', 'ghiacciaio', 'caverna', 'torre', 'castello', 'rovina',
+  'fiamma', 'gelo', 'tuono', 'fulmine', 'ombra', 'luce', 'nebbia', 'tempesta', 'marea', 'vento', 'cenere', 'cristallo',
+  'rubino', 'zaffiro', 'smeraldo', 'diamante', 'onice', 'ambra', 'perla', 'giada', 'opale', 'topazio', 'quarzo', 'ossidiana',
+  'lupo', 'corvo', 'serpente', 'orso', 'gufo', 'falco', 'tigre', 'leone', 'ragno', 'scorpione', 'pantera', 'cervo',
+  'pozione', 'rituale', 'incanto', 'maledizione', 'profezia', 'portale', 'reliquia', 'trono', 'stendardo', 'bastione', 'labirinto', 'santuario',
+  'alba', 'tramonto', 'eclissi', 'cometa', 'stella', 'luna', 'sole', 'aurora', 'abisso', 'oracolo', 'segreto', 'destino',
+];
+
+// Password facile da dettare a voce: tre parole a caso e un numero (circa 1,5·10⁸ combinazioni)
+function generatePassword() {
+  const word = () => WORDS[crypto.randomInt(WORDS.length)];
+  return `${word()}-${word()}-${word()}-${crypto.randomInt(10, 100)}`;
+}
+
 // Icone e manifest restano pubblici, così il browser può proporre l'installazione dell'app anche prima del login
 const PUBLIC_PATHS = ['/manifest.webmanifest', '/login'];
 
@@ -35,12 +58,27 @@ function createAuth(password) {
     return enabled && crypto.timingSafeEqual(digest(given), digest(password));
   }
 
+  let failures = [];
+  let lockedUntil = 0;
+  // 'ok', 'wrong' oppure 'locked' (troppi errori di recente)
+  function attempt(given, now = Date.now()) {
+    if (now < lockedUntil) return 'locked';
+    if (checkPassword(given)) return 'ok';
+    failures = failures.filter((t) => now - t < FAILURE_WINDOW);
+    failures.push(now);
+    if (failures.length >= MAX_FAILURES) {
+      lockedUntil = now + LOCK_TIME;
+      failures = [];
+    }
+    return 'wrong';
+  }
+
   function loginCookie(req) {
     const https = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
     return `${COOKIE}=${token}; Path=/; Max-Age=${ONE_YEAR}; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
   }
 
-  return { enabled, isAuthorized, isPublic, checkPassword, loginCookie };
+  return { enabled, isAuthorized, isPublic, checkPassword, attempt, loginCookie };
 }
 
 function loginPage(error = '') {
@@ -73,4 +111,4 @@ function loginPage(error = '') {
 </html>`;
 }
 
-module.exports = { createAuth, loginPage };
+module.exports = { createAuth, loginPage, generatePassword };

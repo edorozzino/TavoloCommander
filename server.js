@@ -10,7 +10,7 @@ const { lookupCards, lookupToken, searchCards } = require('./scryfall');
 const decks = require('./decks');
 const { STARTER_DECKS } = require('./engine/decks');
 const autoplay = require('./autoplay');
-const { createAuth, loginPage } = require('./auth');
+const { createAuth, loginPage, generatePassword } = require('./auth');
 const tailscale = require('./tailscale');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -18,8 +18,13 @@ const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
 // HTTPS facoltativo: serve per installare l'app sui telefoni in rete locale (le PWA richiedono una connessione sicura)
 const CERT_DIR = path.join(__dirname, 'certs');
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const auth = createAuth(process.env.TAVOLO_PASSWORD);
-const USE_TAILSCALE = process.argv.includes('--tailscale') || process.env.TAILSCALE === '1';
+// --funnel pubblica il tavolo su internet (con Tailscale Funnel), --tailscale solo nella propria rete Tailscale
+const FUNNEL = process.argv.includes('--funnel');
+const USE_TAILSCALE = FUNNEL || process.argv.includes('--tailscale') || process.env.TAILSCALE === '1';
+// TAVOLO_PASSWORD=auto, oppure il tavolo pubblico su internet senza password, ne genera una nuova a ogni avvio
+const GENERATED_PASSWORD = process.env.TAVOLO_PASSWORD === 'auto' || (FUNNEL && !process.env.TAVOLO_PASSWORD);
+const PASSWORD = GENERATED_PASSWORD ? generatePassword() : process.env.TAVOLO_PASSWORD;
+const auth = createAuth(PASSWORD);
 const MAX_PLAYERS = 6;
 const COLORS = ['#e05252', '#4f8fe0', '#4fbf6a', '#d9a33b', '#a565d9', '#3bbfbf'];
 const ZONES = ['library', 'hand', 'battlefield', 'graveyard', 'exile', 'command'];
@@ -120,20 +125,23 @@ function sendLogin(res, status, error) {
   res.end(loginPage(error));
 }
 
-async function handleLogin(req, res) {
-  const form = await readForm(req);
-  if (auth.checkPassword(form.get('password') || '')) {
+// Login dal modulo (POST) oppure dal link con la password già dentro (/login?k=...)
+async function handleLogin(req, res, url) {
+  const given = req.method === 'POST' ? (await readForm(req)).get('password') : url.searchParams.get('k');
+  const result = auth.attempt(given || '');
+  if (result === 'ok') {
     res.writeHead(303, { 'Set-Cookie': auth.loginCookie(req), Location: '/' });
     res.end();
     return;
   }
-  setTimeout(() => sendLogin(res, 401, 'Password sbagliata'), 1000); // rallenta chi prova a indovinarla
+  const error = result === 'locked' ? 'Troppi tentativi sbagliati: riprova tra qualche minuto' : 'Password sbagliata';
+  setTimeout(() => sendLogin(res, 401, error), 1000); // rallenta chi prova a indovinarla
 }
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (auth.enabled) {
-    if (url.pathname === '/login' && req.method === 'POST') return handleLogin(req, res);
+    if (url.pathname === '/login' && (req.method === 'POST' || url.searchParams.has('k'))) return handleLogin(req, res, url);
     if (!auth.isAuthorized(req) && !auth.isPublic(url.pathname)) {
       if (url.pathname.startsWith('/api/')) return sendJson(res, 401, { error: 'Serve la password del tavolo' });
       return sendLogin(res, 401);
@@ -750,14 +758,15 @@ server.listen(PORT, '0.0.0.0', () => {
   } else {
     console.log('  Per installare l\'app sui telefoni serve HTTPS: vedi "App installabile" nel README.');
   }
-  console.log(auth.enabled ? '  Accesso protetto da password (TAVOLO_PASSWORD).' : '  Accesso libero: per chiedere una password avvia con TAVOLO_PASSWORD=...');
+  if (GENERATED_PASSWORD) console.log(`  Password di questa partita (generata ora): ${PASSWORD}`);
+  else console.log(auth.enabled ? '  Accesso protetto da password (TAVOLO_PASSWORD).' : '  Accesso libero: per chiedere una password avvia con TAVOLO_PASSWORD=...');
   console.log('\nPremi Ctrl+C per fermare il server.\n');
-  if (USE_TAILSCALE) tailscale.start(PORT);
+  if (USE_TAILSCALE) tailscale.start(PORT, { funnel: FUNNEL, password: PASSWORD });
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
-    if (USE_TAILSCALE) await tailscale.stop();
+    if (USE_TAILSCALE) await tailscale.stop(FUNNEL);
     process.exit(0);
   });
 }

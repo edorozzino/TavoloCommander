@@ -55,6 +55,21 @@ Il server pubblica il tavolo nella rete Tailscale e mostra l'indirizzo da mandar
 (`https://<nome-pc>.<rete>.ts.net`). La prima volta Tailscale può chiedere di attivare *Serve* e HTTPS con un link nel
 terminale: aprilo, conferma e il server continua da solo. Con Ctrl+C il tavolo viene tolto da Tailscale.
 
+### Senza far installare niente agli amici (Tailscale Funnel)
+
+```bash
+npm run public
+```
+
+Il tavolo diventa raggiungibile da internet allo stesso indirizzo, da qualsiasi browser, senza Tailscale sui dispositivi
+degli amici. A ogni avvio il server genera una nuova password (tre parole e un numero, per esempio `drago-luna-spada-42`)
+e stampa un messaggio pronto da incollare su WhatsApp con il **link di accesso diretto** (`…/login?k=<password>`):
+chi lo apre entra senza digitare nulla. Per usare una password fissa: `TAVOLO_PASSWORD=... npm run public`.
+La prima volta Tailscale può chiedere di attivare *Funnel* con un link nel terminale.
+
+Dopo 20 password sbagliate in 10 minuti il login si blocca per 10 minuti (chi è già entrato continua a giocare).
+`TAVOLO_PASSWORD=auto` genera la password a ogni avvio anche con `npm start` e `npm run remote`.
+
 ## Partita con regole automatiche
 
 Dal menu principale, **Partita con regole** apre un tavolo in cui il motore applica le regole di Magic: fasi e passi,

@@ -1,4 +1,5 @@
-// Pubblica il server nella propria rete Tailscale con `tailscale serve` (HTTPS con certificato vero, solo per i membri della rete).
+// Pubblica il server con Tailscale: `tailscale serve` solo per i membri della propria rete,
+// `tailscale funnel` per chiunque su internet (in entrambi i casi HTTPS con certificato vero).
 const { spawn } = require('child_process');
 const fs = require('fs');
 
@@ -37,8 +38,9 @@ async function status() {
   }
 }
 
-async function start(port) {
-  console.log('Tailscale: pubblico il tavolo nella tua rete Tailscale…');
+async function start(port, { funnel = false, password = '' } = {}) {
+  const mode = funnel ? 'funnel' : 'serve';
+  console.log(funnel ? 'Tailscale Funnel: pubblico il tavolo su internet…' : 'Tailscale: pubblico il tavolo nella tua rete Tailscale…');
   const st = await status();
   if (st.error) {
     if (st.error.code === 'ENOENT') console.log('  Tailscale non è installato: scaricalo da https://tailscale.com/download e fai login.');
@@ -49,22 +51,29 @@ async function start(port) {
     console.log('  Tailscale non è connesso: esegui "tailscale up" (o apri l\'app Tailscale) e riavvia il server.\n');
     return;
   }
-  const r = await run(['serve', '--bg', String(port)], { echo: true });
+  const r = await run([mode, '--bg', String(port)], { echo: true });
   if (r.code !== 0) {
     if (/access denied|permission|sudo/i.test(r.out)) {
-      console.log('  Serve i permessi per usare "tailscale serve". Esegui una volta:');
+      console.log(`  Serve i permessi per usare "tailscale ${mode}". Esegui una volta:`);
       console.log('    sudo tailscale set --operator=$USER');
       console.log('  e poi riavvia il server.');
     }
     return console.log('  Non è stato possibile pubblicare il tavolo su Tailscale.\n');
   }
-  const host = String(st.Self?.DNSName || '').replace(/\.$/, '');
-  console.log(`  Dai PC dei tuoi amici nella rete Tailscale: https://${host || '<nome-pc>.<rete>.ts.net'}`);
-  console.log('  Con Ctrl+C la pubblicazione su Tailscale viene tolta.\n');
+  const url = 'https://' + (String(st.Self?.DNSName || '').replace(/\.$/, '') || '<nome-pc>.<rete>.ts.net');
+  console.log(`\n  Indirizzo del tavolo: ${url}`);
+  if (password) {
+    console.log('\n  Messaggio da mandare agli amici:\n');
+    console.log('    Si gioca a Commander! Apri questo link ed entri subito:');
+    console.log(`    ${url}/login?k=${encodeURIComponent(password)}`);
+    console.log(`    (se chiede la password: ${password})`);
+    if (!funnel) console.log('    Serve Tailscale acceso sul tuo dispositivo.');
+  }
+  console.log(`\n  Con Ctrl+C la pubblicazione su Tailscale viene tolta.\n`);
 }
 
-async function stop() {
-  await run(['serve', '--https=443', 'off']);
+async function stop(funnel = false) {
+  await run([funnel ? 'funnel' : 'serve', '--https=443', 'off']);
 }
 
 module.exports = { start, stop };

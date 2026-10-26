@@ -41,3 +41,28 @@ test('icone e manifest restano pubblici, il resto no', () => {
   assert.ok(!auth.isPublic('/api/decks'));
   assert.ok(!auth.isPublic('/app.js'));
 });
+
+test('la password generata è fatta di tre parole e un numero, diversa a ogni avvio', () => {
+  const { generatePassword } = require('../auth');
+  const a = generatePassword();
+  assert.match(a, /^[a-z]+-[a-z]+-[a-z]+-\d{2}$/);
+  const seen = new Set(Array.from({ length: 50 }, generatePassword));
+  assert.ok(seen.size > 45);
+});
+
+test('dopo troppi tentativi sbagliati il login si blocca per qualche minuto, anche con la password giusta', () => {
+  const auth = createAuth('segreta');
+  const t0 = 1_000_000;
+  for (let i = 0; i < 19; i++) assert.equal(auth.attempt('no', t0 + i), 'wrong');
+  assert.equal(auth.attempt('segreta', t0 + 20), 'ok');
+  assert.equal(auth.attempt('no', t0 + 21), 'wrong'); // ventesimo errore
+  assert.equal(auth.attempt('segreta', t0 + 22), 'locked');
+  assert.equal(auth.attempt('segreta', t0 + 10 * 60 * 1000 + 22), 'ok');
+});
+
+test('gli errori vecchi non contano per il blocco', () => {
+  const auth = createAuth('segreta');
+  for (let i = 0; i < 19; i++) auth.attempt('no', i);
+  assert.equal(auth.attempt('no', 11 * 60 * 1000), 'wrong');
+  assert.equal(auth.attempt('segreta', 11 * 60 * 1000 + 1), 'ok');
+});
