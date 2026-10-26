@@ -10,12 +10,16 @@ const { lookupCards, lookupToken, searchCards } = require('./scryfall');
 const decks = require('./decks');
 const { STARTER_DECKS } = require('./engine/decks');
 const autoplay = require('./autoplay');
+const { createAuth, loginPage } = require('./auth');
+const tailscale = require('./tailscale');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
 // HTTPS facoltativo: serve per installare l'app sui telefoni in rete locale (le PWA richiedono una connessione sicura)
 const CERT_DIR = path.join(__dirname, 'certs');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const auth = createAuth(process.env.TAVOLO_PASSWORD);
+const USE_TAILSCALE = process.argv.includes('--tailscale') || process.env.TAILSCALE === '1';
 const MAX_PLAYERS = 6;
 const COLORS = ['#e05252', '#4f8fe0', '#4fbf6a', '#d9a33b', '#a565d9', '#3bbfbf'];
 const ZONES = ['library', 'hand', 'battlefield', 'graveyard', 'exile', 'command'];
@@ -99,8 +103,47 @@ async function handleApi(req, res, url) {
   sendJson(res, 404, { error: 'Non trovato' });
 }
 
+function readForm(req) {
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 1e4) req.destroy();
+    });
+    req.on('end', () => resolve(new URLSearchParams(data)));
+    req.on('error', () => resolve(new URLSearchParams()));
+  });
+}
+
+function sendLogin(res, status, error) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(loginPage(error));
+}
+
+async function handleLogin(req, res) {
+  const form = await readForm(req);
+  if (auth.checkPassword(form.get('password') || '')) {
+    res.writeHead(303, { 'Set-Cookie': auth.loginCookie(req), Location: '/' });
+    res.end();
+    return;
+  }
+  setTimeout(() => sendLogin(res, 401, 'Password sbagliata'), 1000); // rallenta chi prova a indovinarla
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (auth.enabled) {
+    if (url.pathname === '/login' && req.method === 'POST') return handleLogin(req, res);
+    if (!auth.isAuthorized(req) && !auth.isPublic(url.pathname)) {
+      if (url.pathname.startsWith('/api/')) return sendJson(res, 401, { error: 'Serve la password del tavolo' });
+      return sendLogin(res, 401);
+    }
+  }
+  if (url.pathname === '/login') {
+    res.writeHead(303, { Location: '/' });
+    res.end();
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     handleApi(req, res, url).catch((e) => {
       console.error(e);
@@ -603,7 +646,13 @@ function buildView(room, viewerId) {
 
 // ---------- WebSocket ----------
 const wss = new WebSocketServer({ noServer: true });
-const upgrade = (req, socket, head) => wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+const upgrade = (req, socket, head) => {
+  if (!auth.isAuthorized(req)) {
+    socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+};
 server.on('upgrade', upgrade);
 
 function send(ws, obj) {
@@ -701,5 +750,14 @@ server.listen(PORT, '0.0.0.0', () => {
   } else {
     console.log('  Per installare l\'app sui telefoni serve HTTPS: vedi "App installabile" nel README.');
   }
+  console.log(auth.enabled ? '  Accesso protetto da password (TAVOLO_PASSWORD).' : '  Accesso libero: per chiedere una password avvia con TAVOLO_PASSWORD=...');
   console.log('\nPremi Ctrl+C per fermare il server.\n');
+  if (USE_TAILSCALE) tailscale.start(PORT);
 });
+
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, async () => {
+    if (USE_TAILSCALE) await tailscale.stop();
+    process.exit(0);
+  });
+}

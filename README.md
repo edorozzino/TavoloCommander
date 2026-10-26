@@ -22,6 +22,39 @@ Tutti scrivono lo stesso nome del tavolo (di default `tavolo`). Per cambiare por
 Se gli altri non riescono a collegarsi, controlla che il firewall permetta la porta 3000
 (su Ubuntu: `sudo ufw allow 3000/tcp`).
 
+## Password di accesso
+
+Per chiedere una password a chi apre il tavolo, avvia il server con la variabile `TAVOLO_PASSWORD`:
+
+```bash
+TAVOLO_PASSWORD=lamiapassword npm start                    # Linux / macOS
+$env:TAVOLO_PASSWORD="lamiapassword"; npm start            # Windows PowerShell
+```
+
+Chi apre il sito vede una schermata di accesso; dopo il login il browser resta autorizzato (cookie valido un anno).
+Senza password non si vedono pagine, mazzi salvati né partite. Cambiando password, tutti devono rifare il login.
+
+## Giocare da remoto con Tailscale
+
+[Tailscale](https://tailscale.com) collega i PC tuoi e dei tuoi amici in una rete privata: il tavolo non è pubblico su
+internet, ha un vero HTTPS (l'app si installa anche sui telefoni) e non serve aprire porte sul router.
+
+Una volta sola:
+1. tu e i tuoi amici installate Tailscale ([download](https://tailscale.com/download)) e fate login;
+2. dal [pannello di Tailscale](https://login.tailscale.com/admin/machines) condividi il tuo PC con loro
+   (menu "…" del PC → *Share*) oppure invitali nella tua rete;
+3. su Linux dai al tuo utente il permesso di usare `tailscale serve`: `sudo tailscale set --operator=$USER`.
+
+Poi, per ogni partita:
+
+```bash
+TAVOLO_PASSWORD=lamiapassword npm run remote
+```
+
+Il server pubblica il tavolo nella rete Tailscale e mostra l'indirizzo da mandare agli amici
+(`https://<nome-pc>.<rete>.ts.net`). La prima volta Tailscale può chiedere di attivare *Serve* e HTTPS con un link nel
+terminale: aprilo, conferma e il server continua da solo. Con Ctrl+C il tavolo viene tolto da Tailscale.
+
 ## Partita con regole automatiche
 
 Dal menu principale, **Partita con regole** apre un tavolo in cui il motore applica le regole di Magic: fasi e passi,

@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
+    "remote": "node server.js --tailscale",
     "test": "node --test test/*.test.js",
     "fuzz": "node scripts/fuzz.js"
   },
