@@ -60,7 +60,11 @@
     "count": 1
    },
    {
-    "name": "Burnished HartMorbid Opportunist",
+    "name": "Burnished Hart",
+    "count": 1
+   },
+   {
+    "name": "Morbid Opportunist",
     "count": 1
    },
    {
@@ -72,15 +76,15 @@
     "count": 1
    },
    {
-    "name": "Beast Whisperer (sostituibile con un'altra peschacarte nera come Skullclamp)",
-    "count": 1
-   },
-   {
     "name": "Skullclamp",
     "count": 1
    },
    {
-    "name": "Woe StriderViscera Seer",
+    "name": "Woe Strider",
+    "count": 1
+   },
+   {
+    "name": "Viscera Seer",
     "count": 1
    },
    {
@@ -124,7 +128,7 @@
     "count": 1
    },
    {
-    "name": "Syr Ginger, the Meal Ender (o simili)",
+    "name": "Syr Ginger, the Meal Ender",
     "count": 1
    },
    {
@@ -229,10 +233,6 @@
    },
    {
     "name": "Castle Locthwain",
-    "count": 1
-   },
-   {
-    "name": "Bojuka Bog",
     "count": 1
    },
    {
@@ -348,11 +348,19 @@
     "count": 1
    },
    {
-    "name": "Syr Konrad, the GrimBlood PetStitcher's SupplierViscera SeerSerrated Scorpion",
+    "name": "Blood Pet",
+    "count": 1
+   },
+   {
+    "name": "Stitcher's Supplier",
+    "count": 1
+   },
+   {
+    "name": "Serrated Scorpion",
     "count": 1
    }
   ],
   "maybe": [],
-  "updated": 1793010169369
+  "updated": 1793382711349
  }
 }
