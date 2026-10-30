@@ -20,8 +20,9 @@
   const DECISION_NAMES = {
     declareAttackers: 'dichiarare gli attaccanti', declareBlockers: 'dichiarare i bloccanti', discard: 'scartare', chooseTarget: 'scegliere un bersaglio',
     confirm: 'decidere', search: 'cercare nel grimorio', scry: 'profetizzare', putBack: 'rimettere carte in cima', chooseCards: 'scegliere delle carte',
-    chooseSacrifice: 'scegliere cosa sacrificare',
+    chooseSacrifice: 'scegliere cosa sacrificare', manual: 'applicare un effetto a mano',
   };
+  const COUNTER_LABELS = { '+1/+1': (n) => `+${n}`, '-1/-1': (n) => `−${n}`, loyalty: (n) => `◆${n}`, charge: (n) => `⚡${n}` };
 
   let session = CT.store.get('ct-auto-session'); // { name, room, pid }
   let M = null; // ultimo messaggio autoState
@@ -37,6 +38,7 @@
   let raised = null;
   let previewId = null;
   let introShown = null; // lezione di cui si è già mostrata l'introduzione
+  let manualMode = false; // effetti a mano aperti mentre si ha la priorità: un clic su una carta apre i comandi manuali
   const doneLessons = () => CT.store.get('ct-academy-done', []);
 
   // ---------- Connessione ----------
@@ -132,6 +134,9 @@
   const keyOf = (t) => (t.player ? `p:${t.player}` : `o:${t.object}`);
   const mana = (cost) => esc(cost || '').replace(/\{([^}]+)\}/g, (_, s) => `<img class="ms" src="https://svgs.scryfall.io/card-symbols/${s.replace(/\//g, '')}.svg" alt="{${s}}">`);
 
+  const countersText = (o) => Object.entries(o.counters || {}).map(([k, n]) => (COUNTER_LABELS[k] || ((x) => `${k} ${x}`))(n)).join(' ');
+  const manualTextHtml = (o) => (o?.manual ? `<div class="amtext"><b>✋ Da applicare a mano:</b>${o.manual.map((t) => `<div>${esc(t)}</div>`).join('')}</div>` : '');
+
   function resetDecisionUi() {
     attack = null;
     block = null;
@@ -188,12 +193,21 @@
     const L = M.lobby;
     const isHost = L.host === M.me;
     const mine = L.players.find((p) => p.id === M.me);
+    const deckInfo = (d) => {
+      if (!d.ok) return ' (manca il comandante)';
+      if (d.autoPct == null) return '';
+      const parts = [`${d.autoPct}% automatico`];
+      if (d.manualCount) parts.push(`${d.manualCount} carte con effetti a mano`);
+      if (d.unknownCount) parts.push(`${d.unknownCount} da cercare su Scryfall`);
+      return ` (${parts.join(', ')})`;
+    };
     const deckOptions = (M.decks || []).map((d) => `<option value="${d.id}" ${d.ok ? '' : 'disabled'} ${mine?.deck === d.id ? 'selected' : ''}>
-      ${esc(d.name)} — ${esc(d.commander)}${d.ok ? '' : ` (il motore non conosce ancora ${d.unknownCount} carte)`}</option>`).join('');
+      ${esc(d.name)} — ${esc(d.commander)}${deckInfo(d)}</option>`).join('');
     return `<div class="auto-lobby">
       <h2>Tavolo «${esc(M.room)}» · regole automatiche</h2>
       <p class="muted">Il motore applica le regole: fasi, priorità, Pila, combattimento, danni da comandante. Si gioca con i mazzi iniziali
-      o con i mazzi salvati le cui carte sono tutte programmate. Gli altri giocatori entrano con lo stesso nome del tavolo,
+      o con qualsiasi mazzo salvato: le carte che il motore non conosce prendono costo, tipo, forza e keyword da Scryfall, e gli effetti
+      che non sa applicare (segnati con ✋) li applichi tu con gli effetti a mano. Gli altri giocatori entrano con lo stesso nome del tavolo,
       oppure aggiungi giocatori computer per riempire i posti (da 2 a 4 in tutto).</p>
       ${isHost && L.players.filter((p) => !p.bot).length < 2 ? `<div class="auto-invite"><span>Vuoi giocare con gli amici? Mandagli il link di questo tavolo.</span>
         <button class="primary" data-auto="invite">📨 Invita amici</button></div>` : ''}
@@ -231,10 +245,11 @@
     const img = o.img ? `style="background-image:url('${esc(o.img)}')"` : '';
     if (!o.img) classes.push('textcard');
     const pt = o.power != null ? `<span class="apt ${o.damage ? 'hurt' : ''}">${o.power}/${o.toughness - (o.damage || 0)}</span>` : '';
-    const counters = o.counters?.['+1/+1'] ? `<span class="acnt">+${o.counters['+1/+1']}</span>` : '';
+    const counters = countersText(o) ? `<span class="acnt">${countersText(o)}</span>` : '';
     const sick = o.sick ? '<span class="asick" title="Debolezza da evocazione">💤</span>' : '';
     const text = o.img ? '' : `<span class="atname">${esc(o.name)}</span>`;
-    return `<div class="${classes.join(' ')}" ${img} data-oid="${o.id}" data-zone="${zone}" title="${esc(why ? `${o.name}: ${why}` : o.name)}">${text}${pt}${counters}${sick}</div>`;
+    const hand = o.manual ? '<span class="amark" title="Ha effetti da applicare a mano">✋</span>' : '';
+    return `<div class="${classes.join(' ')}" ${img} data-oid="${o.id}" data-zone="${zone}" title="${esc(why ? `${o.name}: ${why}` : o.name)}">${text}${pt}${counters}${sick}${hand}</div>`;
   }
 
   function panelHtml(p, keys) {
@@ -353,13 +368,13 @@
     }
     const art = o.art || o.img;
     const pt = o.power != null ? `<span class="mc-pt ${o.damage ? 'hurt' : ''}">${o.power}/${o.toughness - (o.damage || 0)}</span>` : '';
-    const plus = o.counters?.['+1/+1'] ? `<span class="mc-cnt">+${o.counters['+1/+1']}</span>` : '';
+    const plus = countersText(o) ? `<span class="mc-cnt">${countersText(o)}</span>` : '';
     const sick = o.sick ? '<span class="mc-sick">💤</span>' : '';
     const n = count > 1 ? `<span class="mc-n">×${count}</span>` : '';
     return `<div class="${classes.join(' ')}" data-oid="${o.id}" data-zone="${zone}" title="${esc(o.name)}"
       data-fx="c${o.cardId}" data-fx-dmg="${o.damage || 0}" data-fx-token="${o.isToken ? 1 : 0}">
       <span class="mc-art" ${art ? `style="background-image:url('${esc(art)}')"` : ''}></span>
-      <span class="mc-name">${esc(o.name)}</span>${pt}${plus}${sick}${n}</div>`;
+      <span class="mc-name">${esc(o.name)}</span>${pt}${plus}${sick}${n}${o.manual ? '<span class="amark">✋</span>' : ''}</div>`;
   }
 
   // Terre uguali nello stesso stato in un'unica carta con il numero: occupano molto meno spazio
@@ -452,7 +467,7 @@
         return `<div class="${c.join(' ')}" style="--i:${k};${o.img ? `background-image:url('${esc(o.img)}')` : ''}" data-oid="${o.id}" data-zone="hand" data-fx="c${o.cardId}" title="${esc(o.name)}">${o.img ? '' : `<span>${esc(o.name)}</span>`}</div>`;
       }).join('') || '<span class="muted">Mano vuota</span>'}</div>
       <aside class="mg-side">
-        <div id="auto-preview" class="mg-preview">${pv?.img ? `<img src="${esc(pv.img)}" alt="${esc(pv.name)}">${CT.credit(pv.img)}` : `<span class="muted">${CT.hover() ? 'Passa sopra una carta per vederla' : 'Tocca una carta per vederla'}</span>`}</div>
+        <div id="auto-preview" class="mg-preview">${pv?.img ? `<img src="${esc(pv.img)}" alt="${esc(pv.name)}">${CT.credit(pv.img)}${manualTextHtml(pv)}` : `<span class="muted">${CT.hover() ? 'Passa sopra una carta per vederla' : 'Tocca una carta per vederla'}</span>`}</div>
         ${M.lesson ? `<div class="auto-lesson"><b>${esc(M.lesson.goal)}</b><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
         <div class="auto-prompt">${promptHtml()}</div>
         <div class="mg-actions">
@@ -495,6 +510,16 @@
     }
     const d = myDecision();
     if (d) return decisionPrompt(d);
+    if (myPriority() && manualMode) {
+      return `<b>✋ Effetti a mano</b><p>Per gli effetti che il motore non applica da solo (le carte con ✋). Tutto finisce nel registro.</p>
+        ${manualToolsHtml()}<button data-auto="manual">Chiudi gli effetti a mano</button>`;
+    }
+    const base = priorityPrompt();
+    return myPriority() && g.manual ? `${base}<button data-auto="manual" title="Comandi liberi per gli effetti che il motore non applica">✋ Effetti a mano</button>` : base;
+  }
+
+  function priorityPrompt() {
+    const g = G();
     if (g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.decision.player))} finisca di ${DECISION_NAMES[g.decision.type] || 'decidere'}…</p>`;
     const top = g.stack[g.stack.length - 1];
     if (top && myPriority()) {
@@ -543,6 +568,9 @@
           <button class="primary" data-auto="confirm-picks" ${picks.length === d.count ? '' : 'disabled'}>Conferma</button>`;
       case 'confirm':
         return `<b>${esc(d.prompt)}</b><div class="row"><button class="primary" data-yes="1">Sì</button><button data-yes="0">No</button></div>`;
+      case 'manual':
+        return `<b>✋ ${esc(d.source || 'Effetto')}: applicalo a mano</b><div class="amtext">${esc(d.text || '').replace(/\n/g, '<br>')}</div>
+          ${manualToolsHtml()}<button class="primary" data-auto="manual-done">Fatto</button>`;
       case 'search':
       case 'chooseCards':
         return `<b>${d.type === 'search' ? `Cerca nel grimorio (fino a ${d.max})` : `Scegli ${d.count} carte`}</b>
@@ -555,6 +583,101 @@
       default:
         return `<p>Decisione: ${esc(d.type)}</p>`;
     }
+  }
+
+  // ---------- Effetti a mano ----------
+  function manualToolsHtml() {
+    const players = G().players.filter((p) => !p.lost);
+    return `<div class="amanual">
+      <p class="muted">Clicca una carta sul tavolo, nella tua mano o in un cimitero per spostarla, tapparla, metterci segnalini o infliggerle danni.</p>
+      ${players.map((p) => `<div class="amrow"><b>${esc(p.name)}</b><span>❤ ${p.life}</span>
+        <button class="small" data-mop="life" data-p="${p.id}" data-n="-1" title="Perde 1 punto vita">−1</button>
+        <button class="small" data-mop="life" data-p="${p.id}" data-n="1" title="Guadagna 1 punto vita">+1</button>
+        <button class="small" data-mop="life" data-p="${p.id}" data-ask="Quanti punti vita? (numero negativo per perderli)">±…</button>
+        <button class="small" data-mop="draw" data-p="${p.id}" data-n="1">Pesca</button>
+        <button class="small" data-mop="mill" data-p="${p.id}" data-ask="Quante carte mette nel cimitero dalla cima del grimorio?">Macina…</button></div>`).join('')}
+      <div class="amrow"><span>Mana</span>${['W', 'U', 'B', 'R', 'G', 'C'].map((c) => `<button class="small" data-mop="mana" data-mcolor="${c}" title="Aggiungi un mana">${mana(`{${c}}`)}</button>`).join('')}
+        <button class="small" data-mop="pay">Paga mana…</button></div>
+      <div class="amrow"><button class="small" data-mop="token">Crea pedina…</button><button class="small" data-mop="search">Cerca nel grimorio…</button>
+        <button class="small" data-mop="scry">Guarda le prime…</button><button class="small" data-mop="shuffle">Mescola</button></div>
+    </div>`;
+  }
+
+  function manualOp(btn, e) {
+    const op = btn.dataset.mop;
+    const go = (extra = {}) => act({ type: 'manual', op, ...extra });
+    const number = (question, def) => {
+      const v = prompt(question, def);
+      if (v == null || v.trim() === '') return null;
+      const n = parseInt(v, 10);
+      if (!Number.isInteger(n) || n === 0) { toast('Scrivi un numero diverso da zero'); return null; }
+      return n;
+    };
+    switch (op) {
+      case 'life': case 'draw': case 'mill': {
+        const n = btn.dataset.ask ? number(btn.dataset.ask, op === 'life' ? '-1' : '1') : Number(btn.dataset.n);
+        return n == null ? undefined : go({ player: btn.dataset.p, amount: n });
+      }
+      case 'mana': return go({ color: btn.dataset.mcolor, amount: 1 });
+      case 'pay': {
+        const cost = prompt('Costo da pagare, con i simboli di mana (es. {2}{B}). Le terre si tappano da sole.', '{1}');
+        return cost ? go({ cost: cost.trim() }) : undefined;
+      }
+      case 'token': {
+        const v = prompt('Pedina da creare: quantità, nome e forza/costituzione (es. "2 Zombie 2/2", oppure "Treasure")', '1 Zombie 2/2');
+        const m = v?.trim().match(/^(?:(\d+)\s+)?(.+?)(?:\s+(\d+)\/(\d+))?$/);
+        if (!m) return undefined;
+        return go({ amount: Number(m[1] || 1), name: m[2], power: m[3] != null ? Number(m[3]) : undefined, toughness: m[4] != null ? Number(m[4]) : undefined });
+      }
+      case 'search':
+        return CT.showMenu(e.clientX, e.clientY, 'Dove metti la carta trovata?', [
+          ['In mano', () => go({ to: 'hand' })], ['Sul campo', () => go({ to: 'battlefield' })],
+          ['Nel cimitero', () => go({ to: 'graveyard' })], ['In cima al grimorio', () => go({ to: 'libraryTop' })],
+        ]);
+      case 'scry': {
+        const n = number('Quante carte guardi dalla cima del grimorio?', '1');
+        return n > 0 ? go({ amount: n }) : undefined;
+      }
+      case 'shuffle': return go();
+      default: return undefined;
+    }
+  }
+
+  // Comandi manuali su una carta: dipendono dalla zona in cui si trova
+  function manualMenu(o, zone, e) {
+    const op = (name, extra = {}) => () => act({ type: 'manual', op: name, object: o.id, ...extra });
+    const move = (list) => list.map(([to, label]) => [label, op('move', { to })]);
+    const library = [['libraryTop', 'In cima al grimorio del proprietario'], ['libraryBottom', 'In fondo al grimorio del proprietario']];
+    let items;
+    if (zone === 'battlefield') {
+      const c = o.counters || {};
+      items = [
+        o.tapped ? ['Stappa', op('tap', { tapped: false })] : ['Tappa', op('tap', { tapped: true })],
+        ['Segnalino +1/+1', op('counter', { kind: '+1/+1', amount: 1 })],
+        ...(c['+1/+1'] ? [['Togli un segnalino +1/+1', op('counter', { kind: '+1/+1', amount: -1 })]] : []),
+        ['Segnalino -1/-1', op('counter', { kind: '-1/-1', amount: 1 })],
+        ...(c['-1/-1'] ? [['Togli un segnalino -1/-1', op('counter', { kind: '-1/-1', amount: -1 })]] : []),
+        ...(o.types.includes('Planeswalker') || c.loyalty ? [['Fedeltà +1', op('counter', { kind: 'loyalty', amount: 1 })], ['Fedeltà −1', op('counter', { kind: 'loyalty', amount: -1 })]] : []),
+        ['Segnalino carica +1', op('counter', { kind: 'charge', amount: 1 })],
+        ...(c.charge ? [['Togli un segnalino carica', op('counter', { kind: 'charge', amount: -1 })]] : []),
+        ...(o.power != null ? [['Infliggi danno…', () => {
+          const n = parseInt(prompt(`Quanti danni a ${o.name}?`, '1'), 10);
+          if (n > 0) op('damage', { amount: n })();
+        }]] : []),
+        ...(o.controller !== M.me ? [['Prendi il controllo', op('control')]] : []),
+        '-',
+        ...move([['graveyard', 'Al cimitero (distruggi o sacrifica)'], ['exile', 'In esilio'], ['hand', 'In mano al proprietario'], ...library]),
+      ];
+    } else if (zone === 'hand') {
+      items = move([['graveyard', 'Scarta'], ['battlefield', 'Metti sul campo'], ['exile', 'Esilia'], ...library]);
+    } else if (zone === 'graveyard' || zone === 'exile') {
+      CT.closeModal();
+      items = move([['battlefield', 'Sul campo, sotto il tuo controllo'], ['hand', 'In mano al proprietario'],
+        zone === 'graveyard' ? ['exile', 'In esilio'] : ['graveyard', 'Nel cimitero'], ...library]);
+    } else {
+      return toast('Le carte nella Pila e nella zona di comando non si spostano a mano');
+    }
+    return CT.showMenu(e.clientX, e.clientY, `✋ ${o.name}`, items);
   }
 
   // ---------- Costruzione delle azioni ----------
@@ -617,7 +740,7 @@
     if (!abilities.length) return toast(`${o.name} non ha abilità da attivare`);
     const label = (ab) => {
       const parts = [ab.tap ? '{T}' : '', ab.cost, ab.sacrifice ? 'sacrifica' : '', ab.discard ? 'scarta' : ''].filter(Boolean).join(', ');
-      return ab.kind === 'mana' ? `Mana: ${ab.produce === 'commanderIdentity' || ab.produce === 'anyColor' ? 'un colore a scelta' : ab.produce}${parts ? ` (${parts})` : ''}` : `Attiva: ${parts || 'senza costo'}`;
+      return ab.kind === 'mana' ? `Mana: ${ab.colors ? `un colore a scelta (${ab.colors.join('/')})` : ab.produce}${parts ? ` (${parts})` : ''}` : `Attiva: ${parts || 'senza costo'}`;
     };
     CT.showMenu(x, y, o.name, abilities.map((ab) => {
       const no = ab.playable && !ab.playable.ok;
@@ -633,6 +756,7 @@
     const d = myDecision();
     const step = flow?.steps[flow.i];
     if (btn?.dataset.auto) return button(btn.dataset.auto);
+    if (btn?.dataset.mop) return manualOp(btn, e);
     if (btn?.dataset.focus) {
       // una linguetta: bersaglio o difensore se serve, altrimenti mostra quel giocatore in grande
       const pid = btn.dataset.focus;
@@ -688,6 +812,8 @@
       case 'menu': lessonList = null; $('#auto').classList.add('hidden'); CT.showLobby(); return undefined;
       case 'pass': if (myPriority()) act({ type: 'pass' }); return undefined;
       case 'cancel': flow = null; return render();
+      case 'manual': manualMode = !manualMode; return render();
+      case 'manual-done': return act({ type: 'manual', op: 'done' });
       case 'classic': return CT.setView('classic');
       case 'invite': return CT.invite(M.room, 'auto');
       case 'arena': return CT.setView('arena');
@@ -748,6 +874,7 @@
       return advanceFlow();
     }
     const d = myDecision();
+    if (d?.type === 'manual' || (!d && manualMode && myPriority())) return manualMenu(o, zone, e);
     if (d) return clickDuringDecision(d, o, zone);
     // sul telefono il primo tocco solleva la carta dalla mano (per leggerla), il secondo la gioca
     if (zone === 'hand' && CT.compact() && !CT.hover() && raised !== id) {
@@ -812,13 +939,13 @@
     if (!o) return;
     previewId = o.id;
     if (CT.compact()) {
-      pv.innerHTML = o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">${CT.credit(o.img)}` : `<b>${esc(o.name)}</b>`;
+      pv.innerHTML = (o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">${CT.credit(o.img)}` : `<b>${esc(o.name)}</b>`) + manualTextHtml(o);
       return;
     }
     const kws = (o.keywords || []).map((k) => KW[k] || k).join(', ');
     pv.innerHTML = o.img
-      ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">${CT.credit(o.img)}${kws ? `<div class="muted">${esc(kws)}</div>` : ''}`
-      : `<b>${esc(o.name)}</b><div class="muted">${esc([...o.types, ...o.subtypes].join(' '))}</div>${o.power != null ? `<div>${o.power}/${o.toughness}</div>` : ''}<div class="muted">${esc(kws)}</div>`;
+      ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">${CT.credit(o.img)}${kws ? `<div class="muted">${esc(kws)}</div>` : ''}${manualTextHtml(o)}`
+      : `<b>${esc(o.name)}</b><div class="muted">${esc([...o.types, ...o.subtypes].join(' '))}</div>${o.power != null ? `<div>${o.power}/${o.toughness}</div>` : ''}<div class="muted">${esc(kws)}</div>${manualTextHtml(o)}`;
   });
 
   document.addEventListener('change', (e) => {

@@ -166,4 +166,7 @@ async function searchCards(q, order = 'edhrec', page = 1) {
   return data;
 }
 
-module.exports = { lookupCards, lookupToken, searchCards };
+// Solo dalla cache, senza rete (null se la carta non è ancora stata cercata)
+const cachedCard = (name) => (complete(cache[key(name)]) ? cache[key(name)] : null);
+
+module.exports = { lookupCards, lookupToken, searchCards, cachedCard };

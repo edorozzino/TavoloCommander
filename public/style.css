@@ -538,6 +538,13 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
 .apt.hurt { color: #ff9a9a; }
 .acnt { position: absolute; left: 2px; bottom: 2px; background: var(--accent); color: #111; font-size: 10px; font-weight: 700; padding: 0 3px; border-radius: 3px; }
 .asick { position: absolute; left: 2px; top: 2px; font-size: 11px; }
+/* carte con effetti da applicare a mano */
+.amark { position: absolute; right: 2px; top: 2px; font-size: 11px; line-height: 1; filter: drop-shadow(0 0 2px #000); }
+.amtext { font-size: 12px; background: var(--panel); border-left: 3px solid var(--accent); padding: 4px 6px; border-radius: 4px; max-height: 160px; overflow-y: auto; }
+.amtext > div { margin-top: 2px; }
+.amanual { display: flex; flex-direction: column; gap: 4px; }
+.amrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.amrow b { min-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
 .auto-hand { display: flex; gap: 6px; padding: 6px; background: var(--panel-2); border-radius: 8px; overflow-x: auto; --aw: 90px; min-height: 130px; }
 .auto-hand .acard:hover { transform: translateY(-6px); }
 .auto-side { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-left: 1px solid var(--border); background: var(--panel); min-height: 0; overflow-y: auto; }

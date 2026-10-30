@@ -20,6 +20,7 @@ const ZONES = ['library', 'hand', 'battlefield', 'graveyard', 'exile', 'command'
 const PERMANENT_TYPES = ['Artifact', 'Creature', 'Enchantment', 'Land', 'Planeswalker', 'Battle'];
 const MAX_HAND_SIZE = 7; // CR 402.2
 const COMMANDER_DAMAGE_LIMIT = 21; // CR 903.10a
+const STEP_TRIGGERS = { beginCombat: 'beginCombat', end: 'endStep' };
 
 const isPermanentCard = (o) => o.def.types.some((t) => PERMANENT_TYPES.includes(t));
 const sameTarget = (a, b) => (a.player ? a.player === b.player : a.object === b.object);
@@ -33,11 +34,13 @@ function formatCost(cost) {
 }
 
 class Game {
-  constructor({ seed = 1, players }) {
+  // cards: definizioni in più oltre a quelle di cards.js (le carte ricavate da Scryfall, vedi generated.js)
+  constructor({ seed = 1, players, cards = {} }) {
     if (!Array.isArray(players) || players.length < 2 || players.length > 4) {
       throw new Error('Una partita Commander richiede da 2 a 4 giocatori');
     }
     this.rng = createRng(seed);
+    this.cards = cards;
     this.nextId = 1;
     this.objects = new Map();
     this.events = [];
@@ -65,7 +68,7 @@ class Game {
         lastTurnStart: 0, // numero dell'ultimo turno iniziato da questo giocatore (CR 302.6)
         commanderCasts: {}, // carta fisica del comandante -> lanci dalla zona di comando
         commanderDamage: {}, // carta fisica del comandante -> danni da combattimento subiti
-        identity: [...new Set((p.commanders || []).flatMap((n) => colorIdentity(getCard(n))))],
+        identity: [...new Set((p.commanders || []).flatMap((n) => colorIdentity(this.cardDef(n))))],
         preferences: { commanderToCommandZone: true },
         zones: Object.fromEntries(ZONES.map((z) => [z, []])),
       });
@@ -111,6 +114,10 @@ class Game {
 
   get stack() {
     return this.stackIds.map((id) => this.objects.get(id));
+  }
+
+  cardDef(name) {
+    return this.cards[name] || getCard(name);
   }
 
   player(pid) {
@@ -199,11 +206,15 @@ class Game {
   }
 
   power(o) {
-    return this.basePT(o)[0] + (o.counters['+1/+1'] || 0) + this.modifiers(o, 'pt').power;
+    return this.basePT(o)[0] + this.counterBonus(o) + this.modifiers(o, 'pt').power;
   }
 
   toughness(o) {
-    return this.basePT(o)[1] + (o.counters['+1/+1'] || 0) + this.modifiers(o, 'pt').toughness;
+    return this.basePT(o)[1] + this.counterBonus(o) + this.modifiers(o, 'pt').toughness;
+  }
+
+  counterBonus(o) {
+    return (o.counters['+1/+1'] || 0) - (o.counters['-1/-1'] || 0);
   }
 
   hasKw(o, keyword) {
@@ -275,7 +286,7 @@ class Game {
   // ---------- Oggetti e zone ----------
   create(owner, name, zone, opts = {}) {
     const id = this.nextId++;
-    const def = opts.def || getCard(name);
+    const def = opts.def || this.cardDef(name);
     const o = {
       id,
       cardId: opts.cardId ?? id, // la carta fisica: resta la stessa quando l'oggetto cambia zona
@@ -473,6 +484,9 @@ class Game {
       for (const o of this.zone(this.active, 'graveyard')) {
         this.triggersOf(o, 'upkeep').filter((a) => a.from === 'graveyard').forEach((a) => this.queueTrigger(o, a));
       }
+    }
+    if (STEP_TRIGGERS[step]) { // "all'inizio della tua sottofase finale / del combattimento nel tuo turno"
+      for (const o of this.battlefield()) if (o.controller === this.active) this.triggersOf(o, STEP_TRIGGERS[step]).forEach((a) => this.queueTrigger(o, a));
     }
     if (step === 'draw' && !(this.seats.length === 2 && this.turn === 1)) this.draw(this.active); // CR 103.8
     if (step === 'declareAttackers') {
@@ -698,7 +712,7 @@ class Game {
     const ctx = {
       controller: spell.controller, targets: legal, source: spell.sourceId, sourceCard: spell.sourceCard,
       sacrificedPower: spell.sacrificedPower, defender: spell.defender, lkiPower: spell.lkiPower,
-      subject: spell.subject, amount: spell.amount, targetsByIndex: byIndex, subjectController: spell.subjectController,
+      subject: spell.subject, amount: spell.amount, targetsByIndex: byIndex, subjectController: spell.subjectController, name: spell.name,
     };
     this.runEffects(spell.effects || [], 0, ctx, () => {
       this.events.push({ type: 'resolve', card: spell.cardId, ability: spell.isAbility });
@@ -981,6 +995,10 @@ class Game {
           } });
         return true;
       }
+      case 'manual': // testo che il motore non sa applicare: lo applica il giocatore (manual.js)
+        this.events.push({ type: 'manual', player: ctx.controller, source: ctx.name });
+        this.ask({ type: 'manual', player: ctx.controller, text: effect.text, source: ctx.name, resume });
+        return true;
       default:
         throw new Error(`Effetto non supportato: ${effect.kind}`);
     }
@@ -997,7 +1015,7 @@ class Game {
       return;
     }
     if (this.priority !== pid) throw new RuleError('NO_PRIORITY', 'Non hai la priorità in questo momento');
-    if (!['pass', 'activateMana', 'playLand', 'cast', 'activate'].includes(action.type)) {
+    if (!['pass', 'activateMana', 'playLand', 'cast', 'activate', 'manual'].includes(action.type)) {
       throw new RuleError('NOT_NOW', 'Questa azione non è possibile adesso');
     }
     this.actions[action.type].call(this, pid, action);
@@ -1108,7 +1126,7 @@ class Game {
       const a = (o.def.abilities || []).find((x) => x.kind === 'mana');
       if (!a || a.cost !== '{T}' || a.sacrifice) continue;
       const times = a.amount ? this.count(a.amount, { controller: pid, source: o.id }) : 1;
-      const flexible = a.produce === 'anyColor' ? WUBRG : a.produce === 'commanderIdentity' ? s.identity : null;
+      const flexible = a.produce === 'anyColor' ? WUBRG : a.produce === 'commanderIdentity' ? s.identity : a.produce === 'choice' ? a.options : null;
       if (flexible && !flexible.length) continue;
       const rank = (isCreature(o) ? 10 : 0) + (flexible ? 2 : isType(o, 'Land') && a.produce.length === 1 ? 0 : 1);
       sources.push({ id: o.id, produce: flexible ? null : a.produce, flexible, times, rank });
@@ -1177,8 +1195,8 @@ Game.prototype.actions = {
     if (tap && o.tapped) throw new RuleError('TAPPED', `${o.name} è già tappato`);
     if (tap && this.isSick(o)) throw new RuleError('SUMMONING_SICK', `${o.name} è entrata in questo turno: non può usare abilità con {T}`);
     let produce = ability.produce;
-    if (produce === 'commanderIdentity' || produce === 'anyColor') {
-      const allowed = produce === 'anyColor' ? WUBRG : this.state.get(pid).identity;
+    if (produce === 'commanderIdentity' || produce === 'anyColor' || produce === 'choice') {
+      const allowed = { anyColor: WUBRG, choice: ability.options }[produce] || this.state.get(pid).identity;
       if (!allowed.includes(action.color)) {
         throw new RuleError('INVALID_COLOR', allowed.length ? `Scegli un colore tra ${allowed.join(', ')}` : 'Il tuo comandante non ha colori: non si produce mana');
       }
@@ -1354,3 +1372,4 @@ module.exports = { Game, STEPS };
 
 // Il combattimento vive in un modulo a parte ma agisce sullo stesso stato
 require('./combat').install(Game);
+require('./manual').install(Game);

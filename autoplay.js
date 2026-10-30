@@ -2,10 +2,11 @@
 const crypto = require('crypto');
 const { createGame } = require('./engine');
 const { buildView } = require('./engine/view');
-const { getCard } = require('./engine/cards');
+const { CARDS } = require('./engine/cards');
+const { defFromScryfall } = require('./engine/generated');
 const { RuleError } = require('./engine/errors');
 const { STARTER_DECKS } = require('./engine/decks');
-const { lookupCards } = require('./scryfall');
+const { lookupCards, cachedCard } = require('./scryfall');
 const decks = require('./decks');
 const lessons = require('./lessons');
 const { botMove } = require('./engine/bot');
@@ -21,17 +22,59 @@ const STEP_NAMES = {
 };
 const ZONE_NAMES = { hand: 'in mano', battlefield: 'sul campo', graveyard: 'nel cimitero', exile: 'in esilio', command: 'nella zona di comando', library: 'nel grimorio', stack: 'sulla Pila' };
 
-// Mazzi disponibili: i mazzi iniziali e i mazzi salvati composti solo da carte che il motore conosce
+// Come il motore tratta una carta: programmata, ricavata da Scryfall (con o senza testo da applicare a mano)
+// oppure ancora sconosciuta (non è nella cache di Scryfall)
+function cardStatus(name) {
+  if (CARDS[name]) return 'auto';
+  const info = cachedCard(name);
+  if (!info) return 'unknown';
+  if (CARDS[info.name]) return 'auto';
+  return defFromScryfall(info).manual.length ? 'manual' : 'auto';
+}
+
+const namesOf = (d) => [...d.commanders, ...d.cards.map((e) => e.name)];
+
+// Mazzi disponibili: i mazzi iniziali e tutti i mazzi salvati con un comandante. Le carte che il motore non conosce
+// si ricavano da Scryfall; quelle con effetti che il motore non sa applicare si giocano con gli effetti manuali
 function deckChoices() {
-  const known = (name) => { try { getCard(name); return true; } catch { return false; } };
   const starters = STARTER_DECKS.map((d, i) => ({ id: `starter-${i}`, name: d.name, commander: d.commander, ok: true }));
   const saved = decks.list().map((d) => {
     const full = decks.get(d.id);
-    const names = [...full.commanders, ...full.cards.map((e) => e.name)];
-    const unknown = names.filter((n) => !known(n));
-    return { id: d.id, name: d.name, commander: full.commanders.join(' + '), ok: unknown.length === 0 && full.commanders.length > 0, unknown: unknown.slice(0, 5), unknownCount: unknown.length };
+    const status = full.cards.flatMap((e) => Array(e.count).fill(cardStatus(e.name)));
+    const manual = full.cards.filter((e) => cardStatus(e.name) === 'manual').length;
+    return {
+      id: d.id, name: d.name, commander: full.commanders.join(' + '), ok: full.commanders.length > 0,
+      autoPct: status.length ? Math.round((100 * status.filter((x) => x === 'auto').length) / status.length) : 100,
+      manualCount: manual, unknownCount: namesOf(full).filter((n) => cardStatus(n) === 'unknown').length,
+    };
   });
   return [...starters, ...saved];
+}
+
+// Cerca su Scryfall le carte dei mazzi salvati che non sono ancora nella cache
+async function prefetchDecks() {
+  const names = decks.list().flatMap((d) => namesOf(decks.get(d.id))).filter((n) => cardStatus(n) === 'unknown');
+  if (names.length) await lookupCards(names);
+}
+
+// Nomi del mazzo trasformati nei nomi ufficiali, più le definizioni delle carte che il motore non ha programmato
+async function resolveDeck(d) {
+  const { found, notFound } = await lookupCards(namesOf(d).filter((n) => !CARDS[n]));
+  if (notFound.length) {
+    throw new RuleError('DECK_UNKNOWN', `Scryfall non trova ${notFound.length} carte di questo mazzo: ${notFound.slice(0, 5).join(', ')}. Correggi i nomi nell'editor dei mazzi.`);
+  }
+  const cards = {};
+  const real = (n) => {
+    if (CARDS[n]) return n;
+    const info = found.get(n);
+    if (!CARDS[info.name]) cards[info.name] = defFromScryfall(info);
+    return info.name;
+  };
+  return {
+    commanders: d.commanders.map(real),
+    library: d.cards.flatMap((e) => Array(e.count).fill(real(e.name))),
+    cards,
+  };
 }
 
 function deckContents(deckId) {
@@ -70,6 +113,8 @@ function narrate(room) {
       log(room, `${nameOf(room, e.player)} ha perso la partita`);
     } else if (e.type === 'fizzle') {
       log(room, 'Una magia o abilità non si risolve: il suo bersaglio non è più valido');
+    } else if (e.type === 'manual') {
+      log(room, `${nameOf(room, e.player)} applica a mano l'effetto di ${e.source}`);
     } else if (e.type === 'reveal') {
       log(room, `${nameOf(room, e.player)} rivela delle carte`);
     }
@@ -88,6 +133,38 @@ function describeAction(room, pid, a) {
     case 'declareBlockers': return a.blocks?.length
       ? `${nameOf(room, pid)} blocca: ${a.blocks.map((x) => `${obj(x.blocker)} blocca ${obj(x.attacker)}`).join(', ')}`
       : `${nameOf(room, pid)} non blocca`;
+    case 'manual': return describeManual(room, pid, a);
+    default: return null;
+  }
+}
+
+const DEST_NAMES = { hand: 'in mano', battlefield: 'sul campo', graveyard: 'nel cimitero', exile: 'in esilio', libraryTop: 'in cima al grimorio', libraryBottom: 'in fondo al grimorio' };
+const COUNTER_NAMES = { '+1/+1': '+1/+1', '-1/-1': '-1/-1', loyalty: 'fedeltà', charge: 'carica' };
+
+// Gli effetti manuali si vedono tutti nel registro: è il modo in cui il tavolo controlla che siano giusti
+function describeManual(room, pid, a) {
+  const g = room.game;
+  const who = `✋ ${nameOf(room, pid)}`;
+  const o = g.object(a.object);
+  // una carta che lascia la mano senza essere rivelata resta coperta
+  const card = o ? (o.zone === 'hand' && a.to?.startsWith('library') ? 'una carta dalla mano' : o.name) : 'una carta';
+  const n = Number(a.amount ?? 1);
+  switch (a.op) {
+    case 'done': return null;
+    case 'draw': return `${who}: ${nameOf(room, a.player)} pesca ${n} ${n === 1 ? 'carta' : 'carte'}`;
+    case 'mill': return `${who}: ${nameOf(room, a.player)} mette le prime ${n} carte del grimorio nel cimitero`;
+    case 'life': return `${who}: ${nameOf(room, a.player)} ${n > 0 ? `guadagna ${n}` : `perde ${-n}`} punti vita`;
+    case 'damage': return `${who}: ${n} danni a ${card}`;
+    case 'counter': return `${who}: ${n > 0 ? `+${n}` : n} segnalini ${COUNTER_NAMES[a.kind] || a.kind} su ${card}`;
+    case 'tap': return `${who}: ${a.tapped ? 'tappa' : 'stappa'} ${card}`;
+    case 'control': return `${who}: prende il controllo di ${card}`;
+    case 'move': return `${who}: ${card} va ${DEST_NAMES[a.to] || a.to}`;
+    case 'token': return `${who}: crea ${n} pedin${n === 1 ? 'a' : 'e'} ${String(a.name || '')}${Number.isInteger(a.power) ? ` ${a.power}/${a.toughness}` : ''}`;
+    case 'mana': return `${who}: aggiunge ${n} mana {${a.color}}`;
+    case 'pay': return `${who}: paga ${a.cost}`;
+    case 'shuffle': return `${who}: mescola il grimorio`;
+    case 'search': return `${who}: cerca una carta nel grimorio e la mette ${DEST_NAMES[a.to] || a.to}`;
+    case 'scry': return `${who}: guarda le prime ${n} carte del grimorio`;
     default: return null;
   }
 }
@@ -126,13 +203,22 @@ async function start(room) {
     const d = deckContents(room.players.get(pid).deckId);
     return { id: pid, commanders: d.commanders, library: d.cards.flatMap((e) => Array(e.count).fill(e.name)) };
   });
+  // carte non programmate nel motore: definizioni ricavate da Scryfall
+  const cards = {};
+  for (const seat of seats) {
+    const { deckId } = room.players.get(seat.id);
+    if (deckId.startsWith('starter-')) continue;
+    const r = await resolveDeck(deckContents(deckId));
+    Object.assign(seat, { commanders: r.commanders, library: r.library });
+    Object.assign(cards, r.cards);
+  }
   // immagini delle carte da Scryfall (dalla cache se già viste)
   const names = [...new Set(seats.flatMap((s) => [...s.commanders, ...s.library]))];
   try {
     const { found } = await lookupCards(names);
     for (const [n, info] of found) { room.images[n] = info.img; room.arts[n] = info.art; room.artists[n] = info.artist; }
   } catch { /* senza internet si gioca con le carte di solo testo */ }
-  room.game = createGame({ seed: crypto.randomInt(1, 2 ** 31), players: seats });
+  room.game = createGame({ seed: crypto.randomInt(1, 2 ** 31), players: seats, cards });
   room.seen = room.game.events.length;
   log(room, `La partita comincia: ${seats.map((s) => nameOf(room, s.id)).join(', ')}. Tocca a ${nameOf(room, room.game.active)}.`);
 }
@@ -187,6 +273,7 @@ async function handle(ws, msg) {
     ws.pid = p.id;
     room.sockets.add(ws);
     send(ws, { t: 'autoJoined', pid: p.id, room: code });
+    if (!room.game) prefetchDecks().then(() => broadcast(room), () => {}); // percentuali dei mazzi aggiornate
     return broadcast(room);
   }
   const room = ws.autoRoom;
@@ -196,7 +283,8 @@ async function handle(ws, msg) {
     if (msg.t === 'autoDeck' && !room.game) {
       const choice = deckChoices().find((d) => d.id === msg.deckId);
       if (!choice) throw new RuleError('NO_DECK', 'Mazzo non trovato');
-      if (!choice.ok) throw new RuleError('DECK_UNKNOWN', `Il motore non conosce ancora ${choice.unknownCount} carte di questo mazzo (es. ${choice.unknown.join(', ')})`);
+      if (!choice.ok) throw new RuleError('NO_COMMANDER', 'Questo mazzo non ha un comandante: sceglilo nell\'editor dei mazzi');
+      if (!choice.id.startsWith('starter-')) await resolveDeck(deckContents(choice.id)); // nomi da correggere: lo dice subito
       p.deckId = choice.id;
       p.deckName = choice.name;
     } else if (msg.t === 'autoAddBot' && !room.game) {

@@ -82,8 +82,8 @@ Dopo 20 password sbagliate in 10 minuti il login si blocca per 10 minuti (chi è
 
 Dal menu principale, **Partita con regole** apre un tavolo in cui il motore applica le regole di Magic: fasi e passi,
 priorità, Pila, combattimento, inneschi, azioni basate sullo stato, danni da comandante. Da 2 a 4 giocatori entrano con
-lo stesso nome del tavolo, ognuno sceglie un mazzo (i 4 mazzi iniziali, oppure un mazzo salvato se il motore conosce
-tutte le sue carte) e chi ha creato il tavolo (★) avvia la partita.
+lo stesso nome del tavolo, ognuno sceglie un mazzo (i 4 mazzi iniziali oppure qualsiasi mazzo salvato con un comandante)
+e chi ha creato il tavolo (★) avvia la partita.
 
 - Clic su una carta in mano: la giochi (terra) o la lanci; se servono bersagli, modalità, sacrifici o scarti, il pannello
   a destra li chiede uno alla volta ed evidenzia sul tavolo le scelte valide. Il mana si paga in automatico con le tue terre.
@@ -99,6 +99,30 @@ tutte le sue carte) e chi ha creato il tavolo (★) avvia la partita.
 
 Limiti attuali: il danno contro più bloccanti e l'ordine degli inneschi simultanei dello stesso giocatore sono decisi dal
 motore; la partita resta in memoria finché il server è acceso.
+
+### Carte non programmate ed effetti a mano
+
+Le carte che il motore non conosce (`engine/cards.js`) si ricavano dai dati di Scryfall (`engine/generated.js`). Il motore
+applica da solo tipo, costo, forza/costituzione, le keyword che conosce, le abilità di mana semplici (anche "un colore a scelta"
+e "un colore dell'identità del comandante") e l'entrata tappata; terre base, terre doppie, rocce di mana e creature con sole
+keyword sono quindi del tutto automatiche. Nella sala d'attesa ogni mazzo mostra la percentuale di carte automatiche.
+
+Il resto del testo è segnato con ✋ e si applica a mano:
+- le magie istantaneo e stregoneria, gli inneschi riconosciuti ("quando entra", "quando muore", "quando attacca", "all'inizio
+  del tuo mantenimento / della tua sottofase finale / del combattimento nel tuo turno") e le abilità attivate con costi di mana,
+  {T}, sacrificio o scarto vanno sulla Pila come sempre; quando si risolvono il pannello mostra il testo, i comandi manuali
+  e il pulsante **Fatto**;
+- gli effetti continui e gli inneschi non riconosciuti si applicano quando si ha la priorità con **✋ Effetti a mano**.
+
+I comandi manuali sono: punti vita, pesca, macina, mana nel pool, paga mana (per X e costi aggiuntivi), crea pedina, cerca nel
+grimorio, guarda le prime carte, mescola; e, cliccando una carta, sposta (cimitero, esilio, mano, campo, grimorio), tappa,
+segnalini (+1/+1, -1/-1, fedeltà, carica), danni, prendi il controllo. Ogni comando finisce nel registro, così il tavolo
+può controllare. Il motore non conosce gli effetti continui delle carte ✋ (per esempio "le tue creature prendono +1/+1"):
+vanno segnati con i segnalini. Con "Passa da solo" attivo la priorità può passare prima che tu applichi un effetto: in quel
+caso disattivalo. Il computer usa solo i mazzi iniziali e conclude subito gli effetti a mano.
+
+Se Scryfall non trova una carta del mazzo (nome scritto male o due nomi attaccati), la scelta del mazzo lo dice: si corregge
+il nome nell'editor.
 
 ## Accademia
 
@@ -208,8 +232,8 @@ Oltre ai test, `npm run fuzz` gioca 1.000 partite con azioni casuali e controlla
 che ogni carta sia sempre in una sola zona e che le azioni rifiutate non modifichino lo stato.
 
 Limiti attuali: il danno di un attaccante bloccato da più creature è assegnato in automatico (letale a ciascuno
-nell'ordine di blocco); il motore conosce solo le carte definite in `engine/cards.js`.
-Il tavolo manuale resta disponibile per giocare con qualsiasi carta; la "Partita con regole" usa il motore.
+nell'ordine di blocco); il motore applica da solo solo le carte definite in `engine/cards.js`, le altre si giocano con gli
+effetti a mano (vedi sopra). Il tavolo manuale resta disponibile per giocare senza regole automatiche.
 
 ## File
 

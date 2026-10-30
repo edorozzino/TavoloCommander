@@ -273,6 +273,7 @@ function decide(g, pid, d) {
       return { type: 'chooseCards', objects: [...d.options].sort((a, b) => score(b) - score(a)).slice(0, d.count) };
     }
     case 'chooseSacrifice': return { type: 'chooseSacrifice', object: chooseSacrifice(g, pid, d.options) };
+    case 'manual': return { type: 'manual', op: 'done' }; // il bot non sa applicare effetti scritti a mano
     default: throw new Error(`Decisione non gestita dal bot: ${d.type}`);
   }
 }

@@ -28,7 +28,7 @@ test('due giocatori scelgono un mazzo iniziale e chi ha creato il tavolo avvia l
   assert.equal(view.players.find((p) => p.id !== view.me).hand, null);
 });
 
-test('un mazzo salvato con carte sconosciute al motore non si può scegliere', async () => {
+test('un mazzo inesistente non si può scegliere', async () => {
   const a = fakeSocket();
   await autoplay.handle(a, { t: 'autoJoin', room: 't-deck', name: 'Anna' });
   const decks = a.last('autoState').decks;

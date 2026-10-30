@@ -24,6 +24,7 @@ function objectView(g, o, ctx, { own = false, castable = false } = {}) {
     isToken: o.isToken,
     isCommander: o.isCommander,
   };
+  if (o.def.manual?.length) v.manual = o.def.manual; // testo che il motore non applica: si applica a mano
   if (o.zone === 'battlefield') {
     Object.assign(v, {
       tapped: o.tapped,
@@ -109,7 +110,7 @@ function abilitiesOf(g, o, pid) {
     };
     const canAct = g.priority === pid && !g.decision;
     if (a.kind === 'mana') {
-      entry.colors = a.produce === 'anyColor' ? WUBRG : a.produce === 'commanderIdentity' ? g.state.get(pid).identity : null;
+      entry.colors = a.produce === 'anyColor' ? WUBRG : a.produce === 'commanderIdentity' ? g.state.get(pid).identity : a.produce === 'choice' ? a.options : null;
       entry.produce = a.produce;
       if (canAct) {
         const extra = sampleChoices(g, [], entry.sacrificeOptions, 0, pid, o.id);
@@ -140,6 +141,7 @@ function decisionView(g, d, viewer, ctx) {
     case 'chooseSacrifice': return { ...base, options: d.options };
     case 'discard': case 'putBack': return { ...base, count: d.count };
     case 'confirm': return { ...base, prompt: d.prompt };
+    case 'manual': return { ...base, text: d.text, source: d.source };
     default: return base; // dichiarazione di attaccanti e bloccanti: l'interfaccia usa il campo di battaglia
   }
 }
@@ -155,6 +157,7 @@ function buildView(g, viewer, { names = {}, images = {}, arts = {}, artists = {}
     active: g.active,
     priority: g.priority,
     winner: g.winner,
+    manual: [...g.objects.values()].some((o) => o.def.manual?.length), // c'è almeno una carta con effetti da applicare a mano
     players: g.seats.map((pid) => {
       const s = g.state.get(pid);
       const own = pid === viewer;
