@@ -144,3 +144,16 @@ test('due account diversi occupano due posti; senza account si resta distinti', 
   await autoplay.handle(d, { t: 'autoJoin', room: 'senza-account', name: 'Anna' });
   assert.notEqual(c.last('autoJoined').pid, d.last('autoJoined').pid);
 });
+
+test('Passa il turno arriva da solo fino al turno successivo e poi si spegne', async () => {
+  const { a, b } = await table('passa-turno');
+  await autoplay.handle(a, { t: 'autoStart' });
+  await keepHands(a, b);
+  const start = a.last('autoState').game;
+  const active = start.active === start.me ? a : b;
+  await autoplay.handle(active, { t: 'autoPassMode', mode: 'turn' });
+  assert.equal(active.last('autoState').passMode, 'turn');
+  for (let i = 0; i < 80 && active.last('autoState').game.turn === start.turn; i++) await new Promise((r) => setTimeout(r, 100));
+  assert.equal(active.last('autoState').game.turn, start.turn + 1);
+  assert.equal(active.last('autoState').passMode, null);
+});

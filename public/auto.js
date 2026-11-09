@@ -324,6 +324,7 @@
         <div class="asteps">${stepTrack()}</div>
         <span class="astatus ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
         <button class="primary ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'} title="Passa la priorità (Spazio)">Passa</button>
+        ${skipButton()}
         <button data-auto="arena" title="Torna alla vista Arena">Vista Arena</button>
         <button data-auto="leave">Esci</button>
       </header>
@@ -338,8 +339,8 @@
           ${M.lesson ? `<div class="auto-lesson"><b>Lezione ${M.lesson.n}: ${esc(M.lesson.title)}</b>
             <div class="muted">${esc(M.lesson.goal)}</div><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
           <div class="auto-prompt">${promptHtml()}</div>
-          ${M.lesson ? '' : `<label class="autopass" title="Come in MTG Arena: se in quel momento non hai carte da giocare né abilità da attivare, la priorità passa da sola">
-          <input type="checkbox" data-autopass ${M.autoPass ? 'checked' : ''}> Passa da solo quando non posso fare niente</label>`}
+          ${M.lesson ? '' : `<label class="autopass" title="Come in MTG Arena: la priorità passa da sola, e ti fermi quando puoi agire e c'è qualcosa in Pila, un attacco o la fine del turno di un avversario">
+          <input type="checkbox" data-autopass ${M.autoPass ? 'checked' : ''}> Passa da solo</label>`}
           <h4>Pila</h4><div class="auto-stack">${stackHtml()}</div>
           <h4>Registro</h4>${logHtml()}
         </aside>
@@ -478,12 +479,13 @@
         <div class="auto-prompt">${promptHtml()}</div>
         <div class="mg-actions">
           <button class="primary mg-pass ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'}>Passa</button>
+          ${skipButton()}
           <button data-auto="log" title="Registro e Pila">📜</button>
           <button data-auto="classic" title="Vista classica">▦</button>
           <button data-auto="leave" title="Esci">✕</button>
         </div>
-        ${M.lesson ? '' : `<label class="autopass" title="Come in MTG Arena: se in quel momento non hai carte da giocare né abilità da attivare, la priorità passa da sola">
-          <input type="checkbox" data-autopass ${M.autoPass ? 'checked' : ''}> Passa da solo quando non posso fare niente</label>`}
+        ${M.lesson ? '' : `<label class="autopass" title="Come in MTG Arena: la priorità passa da sola, e ti fermi quando puoi agire e c'è qualcosa in Pila, un attacco o la fine del turno di un avversario">
+          <input type="checkbox" data-autopass ${M.autoPass ? 'checked' : ''}> Passa da solo</label>`}
       </aside>
       ${overlaysHtml()}
     </div>`;
@@ -837,6 +839,7 @@
       case 'leave': if (!G() || G().winner || M.lesson || confirm('Lasciare il tavolo?')) send({ t: 'autoLeave' }); return undefined;
       case 'menu': lessonList = null; $('#auto').classList.add('hidden'); CT.showLobby(); return undefined;
       case 'pass': if (myPriority()) act({ type: 'pass' }); return undefined;
+      case 'skip': return skipMenu();
       case 'cancel': flow = null; return render();
       case 'manual': manualMode = !manualMode; return render();
       case 'manual-done': return act({ type: 'manual', op: 'done' });
@@ -891,6 +894,22 @@
     }
     if (attack && pid !== M.me) { attack.defender = pid; render(); }
     return undefined;
+  }
+
+  function skipButton() {
+    if (M.lesson) return '';
+    const active = { response: 'Sto passando fino a una risposta: tocca per annullare', turn: 'Sto passando il turno: tocca per annullare' }[M.passMode];
+    return `<button class="${active ? 'primary' : ''}" data-auto="skip" title="${active || 'Salta avanti'}" aria-label="${active || 'Salta avanti'}">⏩</button>`;
+  }
+
+  function skipMenu() {
+    const setMode = (mode) => send({ t: 'autoPassMode', mode });
+    if (M.passMode) return setMode(null);
+    const box = $('[data-auto="skip"]').getBoundingClientRect();
+    return CT.showMenu(box.left, box.top, 'Salta avanti', [
+      ['Fino a una risposta', () => setMode('response')],
+      ['Passa il turno', () => setMode('turn')],
+    ]);
   }
 
   const isTouchArena = () => CT.compact() && !CT.hover();

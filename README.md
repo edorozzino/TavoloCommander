@@ -114,7 +114,7 @@ e chi ha creato il tavolo (★) avvia la partita.
   a destra li chiede uno alla volta ed evidenzia sul tavolo le scelte valide. Il mana si paga in automatico con le tue terre.
 - Clic su un tuo permanente: le sue abilità (mana o attivate).
 - **Passa** (o Spazio) cede la priorità. Come in MTG Arena, quando non hai niente da giocare né abilità da attivare la priorità
-  passa da sola, così con gli amici nessuno resta ad aspettare un clic; si disattiva con "Passa da solo quando non posso fare niente".
+  passa da sola, così con gli amici nessuno resta ad aspettare un clic; si disattiva con "Passa da solo" per fermarsi a ogni passo; se puoi agire ti fermi solo con qualcosa in Pila, con un attacco o alla fine del turno di un avversario, e ⏩ passa fino a una risposta o salta il turno.
   Quando un avversario lancia una magia e tu puoi rispondere, il pulsante Passa lampeggia. Durante attacchi, blocchi, scarti, ricerche e profezie il pannello guida la scelta.
 - Un'azione non consentita viene rifiutata con il motivo (per esempio "Servono {2}{R}{R}" o "è entrata in questo turno").
 - **Contro il computer**: nella sala d'attesa chi ha creato il tavolo può aggiungere da 1 a 3 giocatori computer, ciascuno
