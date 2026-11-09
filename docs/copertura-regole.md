@@ -37,7 +37,7 @@ i numeri citati nel codice esistano ancora dopo un aggiornamento del regolamento
 | Regola | Argomento | Stato | Note |
 |---|---|---|---|
 | 508–511 | Attaccanti, bloccanti, danno, Attacco improvviso | ✅ | |
-| 510.1c | Divisione libera del danno tra più bloccanti | ❌ | Oggi automatica |
+| 510.1c | Divisione libera del danno tra più bloccanti | ✅ | Si chiede solo se la forza non basta per tutti; non nelle lezioni |
 
 ## Effetti continui e sostituzioni
 

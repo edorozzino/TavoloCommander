@@ -35,7 +35,7 @@ function formatCost(cost) {
 
 class Game {
   // cards: definizioni in più oltre a quelle di cards.js (le carte ricavate da Scryfall, vedi generated.js)
-  constructor({ seed = 1, mulligan = false, orderTriggers = false, players, cards = {} }) {
+  constructor({ seed = 1, mulligan = false, orderTriggers = false, assignDamage = false, players, cards = {} }) {
     if (!Array.isArray(players) || players.length < 2 || players.length > 4) {
       throw new Error('Una partita Commander richiede da 2 a 4 giocatori');
     }
@@ -51,6 +51,7 @@ class Game {
     this.decision = null; // scelta che un giocatore deve fare prima che il gioco prosegua
     this.pendingTriggers = []; // abilità innescate in attesa di andare sulla Pila (CR 603.3)
     this.triggerQueue = [];
+    this.askDamage = assignDamage; // se attivo, chi attacca divide il danno tra più bloccanti (CR 510.1c)
     this.askTriggerOrder = orderTriggers; // se attivo, ogni giocatore ordina i propri inneschi simultanei (CR 603.3b)
     this.eot = []; // effetti che durano fino alla fine del turno (CR 514.2)
     this.enteredThisTurn = {}; // Goblin entrati sotto il controllo di ciascun giocatore in questo turno
@@ -574,9 +575,13 @@ class Game {
     }
     if (step === 'firstStrikeDamage') {
       if (!this.combatants().some((o) => this.isFirstStriker(o))) return this.endStep(); // CR 510.4
+      if (this.askDamageAssignments(true)) return;
       this.dealCombatDamage(true);
     }
-    if (step === 'combatDamage') this.dealCombatDamage(false);
+    if (step === 'combatDamage') {
+      if (this.askDamageAssignments(false)) return;
+      this.dealCombatDamage(false);
+    }
     if (step === 'cleanup') {
       const excess = this.state.get(this.active).zones.hand.length - this.maxHandSize(this.active);
       if (excess > 0) {
@@ -1488,6 +1493,17 @@ Game.prototype.actions = {
     this.decision = null;
     if (target != null) this.putTriggerOnStack(d.trigger, [target]);
     this.givePriority(this.resumePid);
+  },
+
+  // assignment: { idBloccante: danni }; la somma deve fare tutta la forza dell'attaccante (CR 510.1c, 510.1e)
+  assignDamage(pid, { assignment = {} }) {
+    const d = this.decision;
+    const values = d.blockers.map((b) => assignment[b.id] ?? 0);
+    if (values.some((n) => !Number.isInteger(n) || n < 0) || values.reduce((a, n) => a + n, 0) !== d.power) {
+      throw new RuleError('INVALID_CHOICE', `Devi assegnare esattamente ${d.power} danni`);
+    }
+    this.decision = null;
+    d.resume(Object.fromEntries(d.blockers.map((b, i) => [b.id, values[i]])));
   },
 
   // order: gli indici degli inneschi nell'ordine in cui si risolveranno, dal primo all'ultimo
