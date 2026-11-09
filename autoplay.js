@@ -262,11 +262,13 @@ async function handle(ws, msg) {
   if (msg.t === 'autoJoin') {
     const code = String(msg.room || 'tavolo').trim().toLowerCase().slice(0, 20) || 'tavolo';
     const room = getRoom(code);
-    let p = msg.pid && room.players.get(msg.pid);
+    // con gli account si rientra nel proprio posto anche da un link o da un altro dispositivo
+    let p = (msg.pid && room.players.get(msg.pid)) || (ws.user && [...room.players.values()].find((x) => x.userId === ws.user.id));
     if (!p) {
       if (room.game) return send(ws, { t: 'error', msg: 'La partita su questo tavolo è già iniziata.' });
       if (room.players.size >= MAX_PLAYERS) return send(ws, { t: 'error', msg: `Il tavolo è pieno (max ${MAX_PLAYERS} giocatori).` });
       p = { id: id(), name: String(msg.name || 'Giocatore').trim().slice(0, 24) || 'Giocatore', deckId: null, deckName: null, connected: true };
+      p.userId = ws.user?.id;
       room.players.set(p.id, p);
       room.order.push(p.id);
       if (!room.host) room.host = p.id;

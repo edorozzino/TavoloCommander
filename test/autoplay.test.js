@@ -121,3 +121,26 @@ test('con il passaggio automatico disattivato la priorità resta a chi ce l’ha
   assert.equal(after.step, before.step);
   assert.equal(after.priority, before.priority);
 });
+
+test('con un account si rientra nel proprio posto, senza sedersi due volte', async () => {
+  const first = { ...fakeSocket(), user: { id: 'u1' } };
+  await autoplay.handle(first, { t: 'autoJoin', room: 'posto-unico', name: 'Luca' });
+  const seat = first.last('autoJoined').pid;
+  const again = { ...fakeSocket(), user: { id: 'u1' } };
+  await autoplay.handle(again, { t: 'autoJoin', room: 'posto-unico', name: 'Luca' });
+  assert.equal(again.last('autoJoined').pid, seat);
+  assert.equal(again.last('autoState').lobby.players.length, 1);
+});
+
+test('due account diversi occupano due posti; senza account si resta distinti', async () => {
+  const a = { ...fakeSocket(), user: { id: 'u1' } };
+  const b = { ...fakeSocket(), user: { id: 'u2' } };
+  await autoplay.handle(a, { t: 'autoJoin', room: 'posti-due', name: 'Luca' });
+  await autoplay.handle(b, { t: 'autoJoin', room: 'posti-due', name: 'Marco' });
+  assert.notEqual(a.last('autoJoined').pid, b.last('autoJoined').pid);
+  const c = fakeSocket();
+  const d = fakeSocket();
+  await autoplay.handle(c, { t: 'autoJoin', room: 'senza-account', name: 'Anna' });
+  await autoplay.handle(d, { t: 'autoJoin', room: 'senza-account', name: 'Anna' });
+  assert.notEqual(c.last('autoJoined').pid, d.last('autoJoined').pid);
+});
