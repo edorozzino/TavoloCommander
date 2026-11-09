@@ -67,7 +67,7 @@ const OPS = {
     const to = a.to.startsWith('library') ? 'library' : a.to;
     if (o.zone === to) throw new RuleError('SAME_ZONE', `${o.name} è già lì`);
     if (o.zone === 'battlefield' && to === 'graveyard') return this.toGraveyard([o]); // innesca "quando muore"
-    this.move(o.id, to, { top: a.to === 'libraryTop', controller: to === 'battlefield' ? pid : undefined });
+    this.move(o.id, to, { top: a.to === 'libraryTop', controller: to === 'battlefield' ? pid : undefined, manual: true });
     return undefined;
   },
 
@@ -110,7 +110,7 @@ const OPS = {
     if (!DESTINATIONS.includes(a.to) || a.to === 'libraryBottom') throw new RuleError('INVALID_ZONE', 'Destinazione non valida');
     const options = [...this.state.get(pid).zones.library];
     this.nested(pid, { type: 'search', options, max: 1 }, (ids) => {
-      for (const id of ids) if (a.to !== 'libraryTop') this.move(id, a.to, { controller: a.to === 'battlefield' ? pid : undefined });
+      for (const id of ids) if (a.to !== 'libraryTop') this.move(id, a.to, { manual: true, controller: a.to === 'battlefield' ? pid : undefined });
       const lib = this.state.get(pid).zones.library;
       this.rng.shuffle(lib);
       if (a.to === 'libraryTop') for (const id of ids) { lib.splice(lib.indexOf(id), 1); lib.unshift(id); }

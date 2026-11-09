@@ -573,7 +573,7 @@
           ${manualToolsHtml()}<button class="primary" data-auto="manual-done">Fatto</button>`;
       case 'search':
       case 'chooseCards':
-        return `<b>${d.type === 'search' ? `Cerca nel grimorio (fino a ${d.max})` : `Scegli ${d.count} carte`}</b>
+        return `<b>${d.type === 'search' ? `Cerca nel grimorio (fino a ${d.max})` : esc(d.prompt || `Scegli ${d.count} carte`)}</b>
           <div class="acards">${d.cards.map((o) => `<div class="apick ${picks.includes(o.id) ? 'on' : ''}" data-pick="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">` : esc(o.name)}</div>`).join('') || '<span class="muted">Nessuna carta valida</span>'}</div>
           <button class="primary" data-auto="confirm-cards" ${d.type === 'chooseCards' && picks.length !== d.count ? 'disabled' : ''}>Conferma</button>`;
       case 'scry':

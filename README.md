@@ -231,6 +231,8 @@ Coperto finora:
 Oltre ai test, `npm run fuzz` gioca 1.000 partite con azioni casuali e controlla che il motore non vada mai in errore,
 che ogni carta sia sempre in una sola zona e che le azioni rifiutate non modifichino lo stato.
 
+Lo stato regola per regola, aggiornato alle Comprehensive Rules del 6 novembre 2026, è in [`docs/copertura-regole.md`](docs/copertura-regole.md).
+
 Limiti attuali: il danno di un attaccante bloccato da più creature è assegnato in automatico (letale a ciascuno
 nell'ordine di blocco); il motore applica da solo solo le carte definite in `engine/cards.js`, le altre si giocano con gli
 effetti a mano (vedi sopra). Il tavolo manuale resta disponibile per giocare senza regole automatiche.
