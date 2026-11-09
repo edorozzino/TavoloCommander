@@ -153,7 +153,7 @@ test('Passa il turno arriva da solo fino al turno successivo e poi si spegne', a
   const active = start.active === start.me ? a : b;
   await autoplay.handle(active, { t: 'autoPassMode', mode: 'turn' });
   assert.equal(active.last('autoState').passMode, 'turn');
-  for (let i = 0; i < 80 && active.last('autoState').game.turn === start.turn; i++) await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 200 && active.last('autoState').game.turn === start.turn; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal(active.last('autoState').game.turn, start.turn + 1);
   assert.equal(active.last('autoState').passMode, null);
 });

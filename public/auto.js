@@ -317,7 +317,7 @@
     const i = g.players.findIndex((p) => p.id === M.me);
     const others = [...g.players.slice(i + 1), ...g.players.slice(0, i)];
     const status = g.winner ? `${esc(playerName(g.winner))} vince la partita!`
-      : g.decision ? `${g.decision.player === M.me ? 'Tocca a te' : `In attesa di ${esc(playerName(g.decision.player))}`}: ${DECISION_NAMES[g.decision.type] || g.decision.type}`
+      : g.decision ? `${g.decision.player === M.me ? 'Tocca a te' : `In attesa di ${esc(playerName(g.decision.player))}`}: ${decisionLabel(g.decision)}`
         : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`;
     return `<header class="auto-top">
         <b>Turno ${g.turn}</b><span class="muted">di ${esc(playerName(g.active))}</span>
@@ -444,7 +444,7 @@
     if (raised && !(mine.hand || []).some((o) => o.id === raised)) raised = null;
     const step = STEPS.find(([id]) => g.step === id || (id === 'combatDamage' && g.step === 'firstStrikeDamage'))?.[1] || '';
     const status = g.winner ? `${esc(playerName(g.winner))} vince!`
-      : g.decision ? (g.decision.player === M.me ? `Tocca a te: ${DECISION_NAMES[g.decision.type] || g.decision.type}` : `Attendi ${esc(playerName(g.decision.player))}`)
+      : g.decision ? (g.decision.player === M.me ? `Tocca a te: ${decisionLabel(g.decision)}` : `Attendi ${esc(playerName(g.decision.player))}`)
         : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`;
     const pool = Object.entries(mine.pool).filter(([, n]) => n).map(([c, n]) => `${mana(`{${c}}`)}${n}`).join(' ');
     const hand = mine.hand || [];
@@ -528,7 +528,7 @@
 
   function priorityPrompt() {
     const g = G();
-    if (g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.decision.player))} finisca di ${DECISION_NAMES[g.decision.type] || 'decidere'}…</p>`;
+    if (g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.decision.player))} finisca di ${decisionLabel(g.decision)}…</p>`;
     const top = g.stack[g.stack.length - 1];
     if (top && myPriority()) {
       return top.controller === M.me
@@ -551,7 +551,7 @@
         attack ||= { defender: g.players.find((p) => p.id !== M.me && !p.lost)?.id, pairs: new Map() };
         const opps = g.players.filter((p) => p.id !== M.me && !p.lost);
         return `<b>Dichiara gli attaccanti</b>
-          <p>Scegli chi attaccare, poi clicca le tue creature. Clicca di nuovo per toglierle.</p>
+          <p>Scegli chi attaccare, poi ${tapWord().toLowerCase()} le tue creature. ${tapWord()} di nuovo per toglierle.</p>
           <div class="aopts">${opps.map((p) => `<button data-defender="${p.id}" class="${attack.defender === p.id ? 'on' : ''}">Attacca ${esc(p.name)}</button>`).join('')}</div>
           <ul class="apairs">${[...attack.pairs].map(([id, def]) => `<li>${esc(findObject(id)?.name)} → ${esc(playerName(def))}</li>`).join('')}</ul>
           <button class="primary" data-auto="confirm-attack">${attack.pairs.size ? 'Conferma attacco' : 'Nessun attacco'}</button>`;
@@ -559,7 +559,7 @@
       case 'declareBlockers': {
         block ||= { selected: null, pairs: [] };
         return `<b>Dichiara i bloccanti</b>
-          <p>Clicca una tua creatura, poi la creatura attaccante che deve bloccare.</p>
+          <p>${tapWord()} una tua creatura, poi la creatura attaccante che deve bloccare.</p>
           <ul class="apairs">${block.pairs.map((p, i) => `<li>${esc(findObject(p.blocker)?.name)} blocca ${esc(findObject(p.attacker)?.name)} <button class="small" data-unblock="${i}">✕</button></li>`).join('')}</ul>
           <button class="primary" data-auto="confirm-block">${block.pairs.length ? 'Conferma blocchi' : 'Nessun blocco'}</button>`;
       }
@@ -571,8 +571,8 @@
         return `<b>Scegli cosa sacrificare</b><div class="aopts">${d.options.map((id) => `<button data-dsac="${id}">${esc(findObject(id)?.name)}</button>`).join('')}</div>`;
       case 'discard':
       case 'putBack':
-        return `<b>${d.type === 'discard' ? 'Scarta' : d.bottom ? 'Metti in fondo al grimorio' : 'Rimetti in cima al grimorio'} ${d.count} carte</b>
-          <p>Clicca le carte nella tua mano${d.type === 'putBack' && !d.bottom ? ' (la prima scelta finisce in cima)' : ''}. Scelte: ${picks.length}/${d.count}</p>
+        return `<b>${d.type === 'discard' ? 'Scarta' : d.bottom ? 'Metti in fondo al grimorio' : 'Rimetti in cima al grimorio'} ${d.count} ${d.count === 1 ? 'carta' : 'carte'}</b>
+          <p>${tapWord()} le carte nella tua mano${d.type === 'putBack' && !d.bottom ? ' (la prima scelta finisce in cima)' : ''}. Scelte: ${picks.length}/${d.count}</p>
           <button class="primary" data-auto="confirm-picks" ${picks.length === d.count ? '' : 'disabled'}>Conferma</button>`;
       case 'assignDamage': {
         if (!split) {
@@ -590,7 +590,9 @@
           <div class="aopts">${d.triggers.map((t) => { const n = picks.indexOf(t.index); return `<button class="${n >= 0 ? 'primary' : ''}" data-pick="${t.index}">${n >= 0 ? `${n + 1}. ` : ''}${esc(t.name)}</button>`; }).join('')}</div>
           <div class="row"><button class="primary" data-auto="confirm-order" ${picks.length === d.count ? '' : 'disabled'}>Conferma</button><button data-auto="auto-order">Ordine automatico</button></div>`;
       case 'confirm':
-        return `<b>${esc(d.prompt)}</b><div class="row"><button class="primary" data-yes="1">Sì</button><button data-yes="0">No</button></div>`;
+        return `<b>${esc(d.prompt)}</b><div class="row">${d.mulligan
+          ? '<button class="primary big-choice" data-yes="0">Tieni</button><button class="big-choice" data-yes="1">Mulligan</button>'
+          : '<button class="primary" data-yes="1">Sì</button><button data-yes="0">No</button>'}</div>`;
       case 'manual':
         return `<b>✋ ${esc(d.source || 'Effetto')}: applicalo a mano</b><div class="amtext">${esc(d.text || '').replace(/\n/g, '<br>')}</div>
           ${manualToolsHtml()}<button class="primary" data-auto="manual-done">Fatto</button>`;
@@ -600,7 +602,7 @@
           <button class="primary" data-auto="confirm-cards" ${d.type === 'chooseCards' && picks.length !== d.count ? 'disabled' : ''}>Conferma</button></div>
           <div class="acards">${d.cards.map((o) => `<div class="apick ${picks.includes(o.id) ? 'on' : ''}" data-pick="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">` : esc(o.name)}</div>`).join('') || '<span class="muted">Nessuna carta valida</span>'}</div>`;
       case 'scry':
-        return `<div class="adecide-head"><b>Profetizza ${d.cards.length}</b><button class="primary" data-auto="confirm-scry">Conferma</button></div><p>Clicca le carte da mettere in fondo al grimorio.</p>
+        return `<div class="adecide-head"><b>Profetizza ${d.cards.length}</b><button class="primary" data-auto="confirm-scry">Conferma</button></div><p>${tapWord()} le carte da mettere in fondo al grimorio.</p>
           <div class="acards">${d.cards.map((o) => `<div class="apick ${scryBottom.has(o.id) ? 'bottom' : ''}" data-scry="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="">` : esc(o.name)}<span>${scryBottom.has(o.id) ? 'in fondo' : 'in cima'}</span></div>`).join('')}</div>`;
       default:
         return `<p>Decisione: ${esc(d.type)}</p>`;
@@ -611,7 +613,7 @@
   function manualToolsHtml() {
     const players = G().players.filter((p) => !p.lost);
     return `<div class="amanual">
-      <p class="muted">Clicca una carta sul tavolo, nella tua mano o in un cimitero per spostarla, tapparla, metterci segnalini o infliggerle danni.</p>
+      <p class="muted">${tapWord()} una carta sul tavolo, nella tua mano o in un cimitero per spostarla, tapparla, metterci segnalini o infliggerle danni.</p>
       ${players.map((p) => `<div class="amrow"><b>${esc(p.name)}</b><span>❤ ${p.life}</span>
         <button class="small" data-mop="life" data-p="${p.id}" data-n="-1" title="Perde 1 punto vita">−1</button>
         <button class="small" data-mop="life" data-p="${p.id}" data-n="1" title="Guadagna 1 punto vita">+1</button>
@@ -912,6 +914,9 @@
     ]);
   }
 
+  const tapWord = () => (CT.hover() ? 'Clicca' : 'Tocca');
+  const decisionLabel = (d) => (d.type === 'putBack' && d.bottom ? 'mettere carte in fondo' : DECISION_NAMES[d.type] || 'decidere');
+
   const isTouchArena = () => CT.compact() && !CT.hover();
 
   // Sul telefono un tocco che non ha altro effetto mostra la carta; col mouse basta passarci sopra, quindi resta l'avviso
@@ -977,7 +982,7 @@
         return render();
       }
     }
-    return showDetail(o, `Prima va completata la scelta: ${DECISION_NAMES[d.type] || d.type}`);
+    return showDetail(o, `Prima va completata la scelta: ${decisionLabel(d)}`);
   }
 
   function pileModal(pid, zone) {

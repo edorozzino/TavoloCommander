@@ -796,7 +796,7 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
 .mg-hcard {
   flex: 0 0 auto; width: var(--hw); aspect-ratio: 63 / 88;
   /* con molte carte si sovrappongono di più, così la mano resta sempre tutta dentro lo schermo */
-  margin-left: min(calc(var(--hw) * -.36), calc((100% - 12px - var(--hw)) / (var(--n) - 1) - var(--hw)));
+  margin-left: min(calc(var(--hw) * -.36), calc((100% - var(--hand-gap, 12px) - var(--hw)) / (var(--n) - 1) - var(--hw)));
   border-radius: calc(var(--hw) * .05); background: #333 center / cover no-repeat; box-shadow: 0 -2px 8px rgba(0, 0, 0, .6);
   transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 2.5deg)); transform-origin: 50% 160%; transition: transform .15s; cursor: pointer;
   font-size: 10px; padding: 4px; overflow: hidden;
@@ -994,3 +994,28 @@ button.urgent:not(:disabled) { animation: pass-pulse 1.1s ease-in-out infinite; 
 .adecide-head { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0; background: var(--panel-2); }
 
 a.mm-item { color: inherit; text-decoration: none; }
+
+.big-choice { flex: 1 1 0; min-height: 48px; font-size: 16px; }
+
+@media (max-width: 600px) {
+  /* il ventaglio ruota le carte alle estremità verso fuori: serve più margine */
+  .mg, .compact .game { --hand-gap: 48px; }
+  /* con uno o due avversari ci stanno nome, vita e carte su una riga sola */
+  .mg-tab:only-child, .mg-tab:first-child:nth-last-child(2), .mg-tab:first-child:nth-last-child(2) ~ .mg-tab { flex-direction: row; gap: 8px; }
+  .compact .mg-tab:only-child, .compact .mg-tab:first-child:nth-last-child(2), .compact .mg-tab:first-child:nth-last-child(2) ~ .mg-tab { flex-direction: row; gap: 8px; }
+  .mg-tab b { min-width: 0; }
+}
+
+/* App installata su iPhone: l'altezza al 100% non arriva in fondo allo schermo */
+@media (display-mode: standalone) {
+  html, body, .lobby, .game, .auto, .builder { height: 100vh; }
+}
+
+/* Telefono in orizzontale: la mano sporge un po' di più, così si leggono meglio le carte */
+@media (orientation: landscape) and (max-height: 600px) {
+  .mg { grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) calc(var(--hw) * .95); }
+  .compact .mg-hand { flex-basis: calc(var(--hw) * .95); }
+}
+
+/* La mano ha un suo livello sotto il pannello: Safari altrimenti può lasciare le carte animate sopra le istruzioni */
+.mg-hand { position: relative; z-index: 1; }

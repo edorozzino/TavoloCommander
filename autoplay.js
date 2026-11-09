@@ -17,6 +17,10 @@ const { nextPassMode, shouldAutoPass, autoAnswer } = require('./autopass');
 const rooms = new Map();
 const id = () => crypto.randomBytes(6).toString('hex');
 const MAX_PLAYERS = 4;
+// Il ritmo della partita: abbastanza lento da capire che cosa succede a ogni passo
+const AUTO_PASS_DELAY = 600;
+const BOT_PASS_DELAY = 300;
+const BOT_ACTION_DELAY = 1400;
 
 const STEP_NAMES = {
   untap: 'stap', upkeep: 'mantenimento', draw: 'acquisizione', main1: 'prima fase principale', beginCombat: 'inizio combattimento',
@@ -392,12 +396,12 @@ function scheduleBots(room) {
         broadcast(room);
       }
       scheduleBots(room);
-    }, 350);
+    }, AUTO_PASS_DELAY);
     return;
   }
   if (!who || !room.players.get(who)?.isBot) return;
   const move = botMove(g, who);
-  const delay = move.type === 'pass' ? 150 : 700;
+  const delay = move.type === 'pass' ? BOT_PASS_DELAY : BOT_ACTION_DELAY;
   room.botTimer = setTimeout(() => {
     room.botTimer = null;
     if (!rooms.has(room.code) || room.game !== g || g.winner) return;

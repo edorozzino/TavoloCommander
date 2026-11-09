@@ -140,7 +140,7 @@ function decisionView(g, d, viewer, ctx) {
     case 'chooseCards': return { ...base, cards: cards(d.options), count: d.count, prompt: d.prompt };
     case 'chooseSacrifice': return { ...base, options: d.options };
     case 'discard': case 'putBack': return { ...base, count: d.count, bottom: d.bottom };
-    case 'confirm': return { ...base, prompt: d.prompt };
+    case 'confirm': return { ...base, prompt: d.prompt, mulligan: d.mulligan };
     case 'assignDamage': return { ...base, attacker: d.attacker, attackerName: d.attackerName, power: d.power, blockers: d.blockers };
     case 'orderTriggers': return { ...base, triggers: d.group.map((t, index) => ({ index, name: t.source.name })), count: d.group.length };
     case 'manual': return { ...base, text: d.text, source: d.source };
