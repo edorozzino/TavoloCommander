@@ -20,7 +20,7 @@
   const DECISION_NAMES = {
     declareAttackers: 'dichiarare gli attaccanti', declareBlockers: 'dichiarare i bloccanti', discard: 'scartare', chooseTarget: 'scegliere un bersaglio',
     confirm: 'decidere', search: 'cercare nel grimorio', scry: 'profetizzare', putBack: 'rimettere carte in cima', chooseCards: 'scegliere delle carte',
-    chooseSacrifice: 'scegliere cosa sacrificare', manual: 'applicare un effetto a mano',
+    chooseSacrifice: 'scegliere cosa sacrificare', orderTriggers: 'ordinare le abilità innescate', manual: 'applicare un effetto a mano',
   };
   const COUNTER_LABELS = { '+1/+1': (n) => `+${n}`, '-1/-1': (n) => `−${n}`, loyalty: (n) => `◆${n}`, charge: (n) => `⚡${n}` };
 
@@ -566,6 +566,10 @@
         return `<b>${d.type === 'discard' ? 'Scarta' : d.bottom ? 'Metti in fondo al grimorio' : 'Rimetti in cima al grimorio'} ${d.count} carte</b>
           <p>Clicca le carte nella tua mano${d.type === 'putBack' && !d.bottom ? ' (la prima scelta finisce in cima)' : ''}. Scelte: ${picks.length}/${d.count}</p>
           <button class="primary" data-auto="confirm-picks" ${picks.length === d.count ? '' : 'disabled'}>Conferma</button>`;
+      case 'orderTriggers':
+        return `<b>Ordina le tue abilità innescate</b><p>Toccale nell'ordine in cui vuoi che si risolvano: la prima si risolve per prima.</p>
+          <div class="aopts">${d.triggers.map((t) => { const n = picks.indexOf(t.index); return `<button class="${n >= 0 ? 'primary' : ''}" data-pick="${t.index}">${n >= 0 ? `${n + 1}. ` : ''}${esc(t.name)}</button>`; }).join('')}</div>
+          <div class="row"><button class="primary" data-auto="confirm-order" ${picks.length === d.count ? '' : 'disabled'}>Conferma</button><button data-auto="auto-order">Ordine automatico</button></div>`;
       case 'confirm':
         return `<b>${esc(d.prompt)}</b><div class="row"><button class="primary" data-yes="1">Sì</button><button data-yes="0">No</button></div>`;
       case 'manual':
@@ -824,6 +828,8 @@
         return act({ type: 'declareAttackers', attackers: [...attack.pairs].map(([object, defender]) => ({ object, defender })) });
       case 'confirm-block': return act({ type: 'declareBlockers', blocks: block.pairs });
       case 'confirm-picks': return act({ type: d.type, objects: picks });
+      case 'confirm-order': return act({ type: 'orderTriggers', order: picks });
+      case 'auto-order': return act({ type: 'orderTriggers', order: d.triggers.map((t) => t.index) });
       case 'confirm-cards': return act(d.type === 'search' ? { type: 'search', objects: picks } : { type: 'chooseCards', objects: picks });
       case 'confirm-scry': {
         const ids = d.cards.map((o) => o.id);

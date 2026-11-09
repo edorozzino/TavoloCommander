@@ -141,6 +141,7 @@ function decisionView(g, d, viewer, ctx) {
     case 'chooseSacrifice': return { ...base, options: d.options };
     case 'discard': case 'putBack': return { ...base, count: d.count, bottom: d.bottom };
     case 'confirm': return { ...base, prompt: d.prompt };
+    case 'orderTriggers': return { ...base, triggers: d.group.map((t, index) => ({ index, name: t.source.name })), count: d.group.length };
     case 'manual': return { ...base, text: d.text, source: d.source };
     default: return base; // dichiarazione di attaccanti e bloccanti: l'interfaccia usa il campo di battaglia
   }
