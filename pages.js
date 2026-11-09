@@ -71,6 +71,9 @@ function adminPage() {
   <p class="error" id="error" hidden></p>
   <h2>Inviti in attesa</h2><div id="invites"></div>
   <h2>Persone con accesso</h2><div id="users"></div>
+  <h2>Tavoli aperti</h2>
+  <p class="muted">I tavoli senza nessuno collegato si chiudono da soli dopo 30 minuti.</p>
+  <div id="tables"></div>
 <script>
 const $ = (id) => document.getElementById(id);
 const ROLE = { player: 'Giocatore', guest: 'Ospite' };
@@ -98,6 +101,12 @@ async function refresh() {
     select.onchange = () => api('users/' + u.id, 'PATCH', { role: select.value }).then(refresh).catch(fail);
     return row(u.name, select, button('Revoca', async () => { if (confirm('Togliere l\\'accesso a ' + u.name + '?')) { await api('users/' + u.id, 'DELETE'); await refresh(); } }));
   }) : [empty('Ancora nessuno.')]));
+  $('tables').replaceChildren(...(s.tables.length ? s.tables.map((t) => {
+    const who = t.players.map((p) => p.name + (p.bot ? ' (computer)' : p.connected ? '' : ' (non collegato)')).join(', ') || 'nessuno';
+    return row((t.mode === 'auto' ? 'Regole automatiche' : 'LAN') + ' · ' + t.code + ' · ' + who, button('Chiudi', async () => {
+      if (confirm('Chiudere il tavolo ' + t.code + '? La partita in corso andrà persa.')) { await api('tables/' + t.mode + '/' + encodeURIComponent(t.code), 'DELETE'); await refresh(); }
+    }));
+  }) : [empty('Nessun tavolo aperto.')]));
 }
 $('create').onclick = () => api('invites', 'POST', { role: $('role').value }).then(async (inv) => {
   const link = location.origin + '/invito/' + inv.token;

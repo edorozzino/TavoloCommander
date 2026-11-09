@@ -99,6 +99,8 @@ Con `TAVOLO_ADMIN_PASSWORD` impostata si entra solo su invito (la vecchia `TAVOL
 | Giocatore | Gioca e crea mazzi; modifica e cancella solo i propri |
 | Ospite | Gioca soltanto |
 
+Da **📨 Invita** al tavolo l'admin può creare un link personale che registra l'amico e lo porta subito a quel tavolo. In **Accessi** ci sono anche i tavoli aperti, chiudibili a mano; quelli senza nessuno collegato si chiudono da soli dopo 30 minuti.
+
 I mazzi creati prima degli inviti appartengono all'admin. Revocando una persona la sua connessione si chiude subito. Il database conserva solo gli hash di link e sessioni.
 
 ## Partita con regole automatiche

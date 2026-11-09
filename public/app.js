@@ -76,6 +76,13 @@
 
   function handle(msg) {
     if (String(msg.t).startsWith('auto')) return window.Auto?.handle(msg); // tavolo con regole automatiche
+    if (msg.t === 'tableClosed') { // chiuso dall'admin o per inattività: non si deve tentare di rientrarci
+      store.del('ct-session');
+      store.del('ct-auto-session');
+      toast('Questo tavolo è stato chiuso.');
+      setTimeout(() => location.reload(), 1500);
+      return;
+    }
     if (msg.t === 'error' && window.Auto?.active()) return window.Auto.handle(msg);
     if (msg.t === 'joined') {
       session = { ...session, pid: msg.pid, room: msg.room };
@@ -944,16 +951,35 @@
     const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
     if (!local && !addresses.some((a) => a.url === location.origin)) addresses.unshift({ url: location.origin, label: 'Questo indirizzo', note: '' });
     if (!addresses.length) addresses.push({ url: location.origin, label: 'Questo indirizzo', note: 'Dal computer del server: gli altri devono usare l\'indirizzo IP mostrato nel terminale.' });
-    inv = { room, mode, key: info.key, addresses, pick: 0 };
+    inv = { room, mode, key: info.key, addresses, pick: 0, inviteOnly: info.inviteOnly, isAdmin: info.isAdmin, personal: null };
     drawInvite();
   }
 
   function inviteLink() {
     const a = inv.addresses[inv.pick];
+    if (inv.personal) return `${a.url}/invito/${inv.personal}`;
     const path = `/?t=${encodeURIComponent(inv.room)}&m=${inv.mode}`;
     return a.url + (inv.key ? `/login?k=${encodeURIComponent(inv.key)}&next=${encodeURIComponent(path)}` : path);
   }
   const inviteText = () => `Ti invito a una partita di Commander${inv.mode === 'auto' ? ' con regole automatiche' : ''} al tavolo «${inv.room}»! Apri il link ed entri subito: ${inviteLink()}`;
+
+  function inviteMessage() {
+    if (!inv.inviteOnly) return `Chi apre il link entra direttamente in questo tavolo${inv.key ? ', senza scrivere la password' : ''}: deve solo scegliere il nome.`;
+    if (inv.personal) return 'Link personale: vale per una sola persona, scade tra 48 ore e la porta subito a questo tavolo. Per un altro amico creane un altro.';
+    if (inv.isAdmin) return 'Questo link vale per chi è già registrato. Per chi è nuovo crea il suo link personale.';
+    return 'Questo link vale solo per chi è già registrato: agli amici nuovi serve un invito dall\'admin.';
+  }
+
+  async function createPersonalInvite() {
+    const res = await fetch('/api/admin/invites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'player', next: `/?t=${encodeURIComponent(inv.room)}&m=${inv.mode}` }),
+    });
+    if (!res.ok) return toast('Non è stato possibile creare il link');
+    inv.personal = (await res.json()).token;
+    drawInvite();
+  }
 
   function drawInvite() {
     const a = inv.addresses[inv.pick];
@@ -967,14 +993,14 @@
       <div class="inv-body">
         <div class="inv-qr">${qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true })}</div>
         <div class="inv-side">
-          <p>Chi apre il link entra direttamente in questo tavolo${inv.key ? ', senza scrivere la password' : ''}: deve solo scegliere il nome.
-          Dal telefono può anche inquadrare il codice con la fotocamera.</p>
+          <p>${inviteMessage()} Dal telefono si può anche inquadrare il codice con la fotocamera.</p>
           ${a.note ? `<p class="muted small">⚠ ${esc(a.note)}</p>` : ''}
           <input class="inv-link" readonly value="${esc(link)}">
           <div class="row">
             ${navigator.share ? '<button class="primary" data-inv="share">Condividi…</button>' : ''}
             <button data-inv="whatsapp">WhatsApp</button>
             <button data-inv="copy">Copia link</button>
+            ${inv.inviteOnly && inv.isAdmin ? `<button data-inv="personal">➕ ${inv.personal ? 'Crea un altro link' : 'Link per un amico nuovo'}</button>` : ''}
           </div>
         </div>
       </div>
@@ -998,6 +1024,7 @@
     if (addr) { inv.pick = Number(addr.dataset.invAddr); drawInvite(); return; }
     const b = e.target.closest('[data-inv]');
     if (!b) return;
+    if (b.dataset.inv === 'personal') { createPersonalInvite(); return; }
     if (b.dataset.inv === 'copy') copyText(inviteLink());
     if (b.dataset.inv === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(inviteText())}`, '_blank', 'noopener');
     if (b.dataset.inv === 'share') navigator.share({ title: 'Tavolo Commander', text: inviteText().replace(/: \S+$/, ':'), url: inviteLink() }).catch(() => {});
@@ -1048,7 +1075,5 @@
   fetch('/api/me').then((r) => r.json()).then((me) => {
     if (me.role === 'admin') $('#lobby-admin').classList.remove('hidden');
     else if (me.name) Object.assign($('#lobby-name'), { value: me.name, readOnly: true });
-  }).catch(() => {});
-
-  connect();
+  }).catch(() => {}).finally(connect); // prima il nome: chi arriva da un invito entra subito nel tavolo
 })();

@@ -11,6 +11,7 @@ const SESSION_COOKIE = 'tavolo_session';
 const ONE_YEAR = 365 * 24 * 3600;
 const ADMIN = { id: 'admin', name: 'Admin', role: 'admin' };
 const INVITE_LINK = /\/invito\/([a-f0-9]{64})\b/;
+const TABLE_LINK = /^\/\?t=[^&#\s]{1,120}&m=(auto|lan)$/;
 
 const hash = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
 const newToken = () => crypto.randomBytes(32).toString('hex');
@@ -36,16 +37,18 @@ function createAccounts({ store, now = Date.now }) {
   }
 
   return {
-    createInvite(role) {
+    // next: il tavolo a cui portare l'invitato, solo nella forma dei link del gioco
+    createInvite(role, next = null) {
       if (!ROLES.includes(role)) throw new AccountError('BAD_ROLE', 'Ruolo non valido');
       pruneInvites();
       const token = newToken();
       const id = hash(token);
-      data().invites[id] = { role, expires: now() + INVITE_LIFETIME };
+      data().invites[id] = { role, expires: now() + INVITE_LIFETIME, next: TABLE_LINK.test(String(next)) ? next : null };
       store.save();
       return { id, token, role, expires: data().invites[id].expires };
     },
     isInviteValid: (token) => Boolean(liveInvite(hash(token))),
+    inviteNext: (token) => liveInvite(hash(token))?.next || '/',
     // Il link si consuma solo qui, quando l'invitato conferma il nome: le anteprime di WhatsApp lo aprono soltanto
     redeem(token, rawName) {
       const id = hash(token);
@@ -54,13 +57,14 @@ function createAccounts({ store, now = Date.now }) {
       const name = String(rawName ?? '').trim().slice(0, 24);
       if (!name) throw new AccountError('NAME_REQUIRED', 'Scegli un nome');
       if (name.toLowerCase() === ADMIN.name.toLowerCase() || nameTaken(name)) throw new AccountError('NAME_TAKEN', 'Questo nome è già in uso');
+      const next = invite.next || '/';
       delete data().invites[id];
       const user = { id: crypto.randomBytes(8).toString('hex'), name, role: invite.role, created: now() };
       data().users[user.id] = user;
       const session = newToken();
       data().sessions[hash(session)] = { userId: user.id };
       store.save();
-      return { user, session };
+      return { user, session, next };
     },
     userForSession(token) {
       if (!token) return null;

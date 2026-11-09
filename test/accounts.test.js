@@ -83,6 +83,15 @@ test('nell\'archivio non restano link né sessioni in chiaro', () => {
   assert.ok(!saved.includes(token) && !saved.includes(session) && !saved.includes(other.token));
 });
 
+test('un invito può portare a un tavolo, solo con un link del gioco', () => {
+  const ok = accounts.createInvite('player', '/?t=test&m=auto');
+  assert.equal(accounts.inviteNext(ok.token), '/?t=test&m=auto');
+  assert.equal(accounts.redeem(ok.token, 'Luca').next, '/?t=test&m=auto');
+  for (const bad of ['https://evil.example', '//evil.example', '/?t=x&m=auto&y=1', '/admin']) {
+    assert.equal(accounts.inviteNext(accounts.createInvite('player', bad).token), '/');
+  }
+});
+
 test('permessi sui mazzi', () => {
   const admin = { id: 'admin', role: 'admin' };
   const player = { id: 'p1', role: 'player' };

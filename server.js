@@ -10,6 +10,7 @@ const { lookupCards, lookupToken, searchCards } = require('./scryfall');
 const decks = require('./decks');
 const { createAccounts, createAccountsStore, createAccountAuth, canCreateDeck, canEditDeck, AccountError, INVITE_LINK } = require('./accounts');
 const { invitePage, inviteExpiredPage, adminPage } = require('./pages');
+const { sweepRooms } = require('./room-sweep');
 const { STARTER_DECKS } = require('./engine/decks');
 const autoplay = require('./autoplay');
 const { createAuth, loginPage, generatePassword } = require('./auth');
@@ -101,7 +102,7 @@ async function handleApi(req, res, url) {
     if (publicAccess) addresses.push({ url: publicAccess.url, label: publicAccess.funnel ? 'Da internet' : 'Rete Tailscale', note: publicAccess.funnel ? '' : 'Serve Tailscale acceso sul dispositivo' });
     const tailnet = (ip) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip); // indirizzi interni di Tailscale
     if (!process.env.RENDER) for (const ip of ips.filter((x) => !tailnet(x))) addresses.push({ url: `http://${ip}:${PORT}`, label: 'Stessa Wi-Fi', note: 'Solo per chi è collegato alla tua rete' });
-    return sendJson(res, 200, { addresses, key: auth.enabled ? PASSWORD : null });
+    return sendJson(res, 200, { addresses, key: auth.enabled && !accounts ? PASSWORD : null, inviteOnly: Boolean(accounts), isAdmin: auth.user?.(req)?.role === 'admin' });
   }
   if (resource === 'starter-decks' && req.method === 'GET') {
     return sendJson(res, 200, STARTER_DECKS.map((d, i) => ({
@@ -158,12 +159,17 @@ function sendPage(res, status, html) {
 }
 
 async function handleInvite(req, res, token) {
+  if (auth.isAuthorized(req)) { // chi è già registrato entra senza consumare il link né creare un doppione, anche se lo riapre dopo
+    res.writeHead(303, { Location: accounts.inviteNext(token), 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
   if (!accounts.isInviteValid(token)) return sendPage(res, 410, inviteExpiredPage());
   if (req.method !== 'POST') return sendPage(res, 200, invitePage(token));
   const name = (await readForm(req)).get('name');
   try {
-    const { session } = accounts.redeem(token, name);
-    res.writeHead(303, { 'Set-Cookie': auth.sessionCookie(req, session), Location: '/', 'Cache-Control': 'no-store' });
+    const { session, next } = accounts.redeem(token, name);
+    res.writeHead(303, { 'Set-Cookie': auth.sessionCookie(req, session), Location: next, 'Cache-Control': 'no-store' });
     res.end();
   } catch (err) {
     if (!(err instanceof AccountError)) throw err;
@@ -174,8 +180,15 @@ async function handleInvite(req, res, token) {
 
 async function handleAdminApi(req, res, parts) {
   const [what, id] = parts;
-  if (what === 'state' && req.method === 'GET') return sendJson(res, 200, accounts.state());
-  if (what === 'invites' && req.method === 'POST' && !id) return sendJson(res, 200, accounts.createInvite((await readBody(req)).role));
+  if (what === 'state' && req.method === 'GET') return sendJson(res, 200, { ...accounts.state(), tables: listTables() });
+  if (what === 'tables' && req.method === 'DELETE') {
+    const code = decodeURIComponent(parts[2] || '');
+    return sendJson(res, (id === 'auto' ? autoplay.closeTable(code) : closeLanTable(code)) ? 200 : 404, {});
+  }
+  if (what === 'invites' && req.method === 'POST' && !id) {
+    const body = await readBody(req);
+    return sendJson(res, 200, accounts.createInvite(body.role, body.next));
+  }
   if (what === 'invites' && req.method === 'DELETE') return sendJson(res, accounts.cancelInvite(id) ? 200 : 404, {});
   if (what === 'users' && req.method === 'PATCH') return sendJson(res, accounts.setRole(id, (await readBody(req)).role) ? 200 : 404, {});
   if (what === 'users' && req.method === 'DELETE') {
@@ -697,6 +710,28 @@ const actions = {
 };
 
 // ---------- Vista per ciascun giocatore (nasconde le informazioni private) ----------
+function closeLanRoom(room) {
+  rooms.delete(room.code);
+  for (const ws of room.sockets) {
+    ws.room = null;
+    send(ws, { t: 'tableClosed' });
+  }
+}
+
+function closeLanTable(code) {
+  const room = rooms.get(code);
+  if (room) closeLanRoom(room);
+  return Boolean(room);
+}
+
+function listTables() {
+  const lan = [...rooms.values()].map((room) => ({
+    mode: 'lan', code: room.code, started: true,
+    players: room.order.map((pid) => ({ name: room.players.get(pid).name, bot: false, connected: Boolean(room.players.get(pid).connected) })),
+  }));
+  return [...lan, ...autoplay.listTables()];
+}
+
 // Le carte scoperte sono pubbliche; quelle a faccia in giù le vede solo chi le possiede o controlla
 function viewCard(c, visible) {
   if (!c.faceDown) return c;
@@ -836,6 +871,11 @@ if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
   secure = https.createServer({ cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }, server.listeners('request')[0]);
   secure.on('upgrade', upgrade);
 }
+
+setInterval(() => {
+  sweepRooms(rooms, closeLanRoom);
+  autoplay.sweep();
+}, 60 * 1000).unref();
 
 function start() {
   server.listen(PORT, '0.0.0.0', () => {

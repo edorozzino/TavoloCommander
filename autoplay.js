@@ -11,6 +11,8 @@ const decks = require('./decks');
 const lessons = require('./lessons');
 const { botMove } = require('./engine/bot');
 
+const { sweepRooms } = require('./room-sweep');
+
 const rooms = new Map();
 const id = () => crypto.randomBytes(6).toString('hex');
 const MAX_PLAYERS = 4;
@@ -407,4 +409,29 @@ function disconnect(ws) {
   }
 }
 
-module.exports = { handle, disconnect, isAutoMessage: (msg) => /^(auto|lesson)/.test(String(msg.t || '')) };
+function closeRoom(room) {
+  clearTimeout(room.botTimer);
+  rooms.delete(room.code);
+  for (const ws of room.sockets) {
+    ws.autoRoom = null;
+    send(ws, { t: 'tableClosed' });
+  }
+}
+
+function listTables() {
+  return [...rooms.values()].filter((room) => !room.lesson).map((room) => {
+    const online = new Set([...room.sockets].map((ws) => ws.pid));
+    return {
+      mode: 'auto', code: room.code, started: Boolean(room.game),
+      players: room.order.map((pid) => ({ name: room.players.get(pid).name, bot: Boolean(room.players.get(pid).isBot), connected: online.has(pid) })),
+    };
+  });
+}
+
+function closeTable(code) {
+  const room = rooms.get(code);
+  if (room) closeRoom(room);
+  return Boolean(room);
+}
+
+module.exports = { handle, disconnect, listTables, closeTable, sweep: () => sweepRooms(rooms, closeRoom), isAutoMessage: (msg) => /^(auto|lesson)/.test(String(msg.t || '')) };
