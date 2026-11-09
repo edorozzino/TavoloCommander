@@ -56,6 +56,7 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}`);
     ws.onopen = () => {
+      document.getElementById('boot')?.remove();
       $('#offline').classList.add('hidden');
       if (session) ws.send(JSON.stringify({ t: 'join', ...session }));
       window.Auto?.onOpen();

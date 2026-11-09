@@ -1,6 +1,6 @@
 // Service worker: l'interfaccia resta disponibile anche quando il server non risponde.
 // Le partite richiedono comunque il server (WebSocket): senza, l'app mostra un avviso.
-const VERSION = 'tavolo-commander-v4';
+const VERSION = 'tavolo-commander-v5';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/builder.js', '/auto.js', '/mobile.js', '/fx.js', '/vendor/qrcode.js', '/manifest.webmanifest',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon.svg',
@@ -18,6 +18,15 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+const cachedPage = (req) => caches.match(req).then((hit) => hit || caches.match('/index.html'));
+
+async function isHostingPlaceholder(req, res) {
+  const type = res.headers.get('content-type') || '';
+  if (req.mode !== 'navigate') return type.includes('text/html') && /\.(css|js|svg|png|webmanifest)$/.test(new URL(req.url).pathname);
+  if (!type.includes('text/html') || new URL(res.url).pathname === '/login') return false;
+  return !(await res.clone().text()).includes('id="boot"');
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -26,10 +35,12 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname.startsWith('/api/')) return; // dati sempre dal server
     // prima la rete (così gli aggiornamenti arrivano subito), poi la cache
     event.respondWith(
-      fetch(req).then((res) => {
+      fetch(req).then(async (res) => {
+        // Un hosting addormentato risponde con la sua pagina di attesa: non va messa in cache al posto dei nostri file
+        if (await isHostingPlaceholder(req, res)) return (await cachedPage(req)) || res;
         if (res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
         return res;
-      }).catch(() => caches.match(req).then((hit) => hit || caches.match('/index.html'))),
+      }).catch(() => cachedPage(req)),
     );
     return;
   }

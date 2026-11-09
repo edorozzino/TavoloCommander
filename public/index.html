@@ -17,6 +17,33 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Visibile prima di qualunque script: sparisce appena il server risponde. Tutto qui dentro, perché style.css può non essere ancora arrivato. -->
+  <div id="boot" role="status" aria-live="polite">
+    <style>
+      #boot { position: fixed; inset: 0; z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; background: #0f1116; color: #e8e2d2; font: 16px system-ui, sans-serif; text-align: center; animation: boot-in .3s .4s both; }
+      #boot .boot-ring { width: 44px; height: 44px; border: 4px solid #3a3320; border-top-color: #d9a33b; border-radius: 50%; animation: boot-spin 1s linear infinite; }
+      #boot p { margin: 0; max-width: 28em; }
+      #boot button { min-height: 44px; padding: 0 18px; border: 1px solid #d9a33b; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+      #boot [hidden] { display: none; }
+      @keyframes boot-in { from { opacity: 0; } }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { #boot .boot-ring { animation-duration: 3s; } }
+    </style>
+    <div class="boot-ring"></div>
+    <p id="boot-text">Preparo il tavolo…</p>
+    <div id="boot-actions" hidden>
+      <button type="button" onclick="location.reload()">Riprova</button>
+      <button type="button" onclick="document.getElementById('boot').remove()">Entra comunque</button>
+    </div>
+    <script>
+      setTimeout(function () { var t = document.getElementById('boot-text'); if (t) t.textContent = 'Il server si sta svegliando: può volerci circa un minuto.'; }, 5000);
+      setTimeout(function () {
+        var t = document.getElementById('boot-text'), a = document.getElementById('boot-actions');
+        if (t) t.textContent = 'Il server non risponde ancora.';
+        if (a) a.hidden = false;
+      }, 120000);
+    </script>
+  </div>
   <!-- Menu principale -->
   <section id="lobby" class="lobby">
     <div class="menu-side">
