@@ -66,15 +66,46 @@
     ws.onclose = (ev) => {
       if (ev.code === 4001) return location.reload(); // accesso revocato: si torna alla pagina di ingresso
       $('#offline').classList.remove('hidden'); // avviso fisso finché il server non torna raggiungibile
-      setTimeout(connect, 1500);
+      reconnectTimer = setTimeout(connect, 1500);
     };
   }
+
+  // Tornando sull'app (o passando da Wi-Fi a rete mobile) la connessione può sembrare aperta ma essere morta:
+  // si controlla subito invece di aspettare un'azione che non arriverebbe mai.
+  const PONG_TIMEOUT = 3000;
+  let reconnectTimer = null;
+  let pongTimer = null;
+
+  function reconnectNow() {
+    clearTimeout(reconnectTimer);
+    connect();
+  }
+
+  function checkConnection() {
+    if (document.visibilityState !== 'visible' || !ws) return;
+    if (ws.readyState === WebSocket.CLOSED) return reconnectNow();
+    if (ws.readyState !== WebSocket.OPEN) return;
+    clearTimeout(pongTimer);
+    const probed = ws;
+    probed.send(JSON.stringify({ t: 'ping' }));
+    pongTimer = setTimeout(() => {
+      if (probed !== ws || probed.readyState !== WebSocket.OPEN) return;
+      probed.onclose = null; // su una rete morta la chiusura può metterci minuti: si riparte subito
+      probed.close();
+      $('#offline').classList.remove('hidden');
+      reconnectNow();
+    }, PONG_TIMEOUT);
+  }
+  document.addEventListener('visibilitychange', checkConnection);
+  window.addEventListener('online', checkConnection);
+  window.addEventListener('pageshow', checkConnection);
 
   function act(a, data = {}) {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'act', a, ...data }));
   }
 
   function handle(msg) {
+    if (msg.t === 'pong') return clearTimeout(pongTimer);
     if (String(msg.t).startsWith('auto')) return window.Auto?.handle(msg); // tavolo con regole automatiche
     if (msg.t === 'tableClosed') { // chiuso dall'admin o per inattività: non si deve tentare di rientrarci
       store.del('ct-session');

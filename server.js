@@ -794,6 +794,8 @@ function broadcast(room) {
 }
 
 wss.on('connection', (ws, req) => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   ws.user = auth.user?.(req) ?? null; // con gli inviti ogni connessione ha il suo utente, revocabile in tempo reale
   ws.on('message', async (raw) => {
     let msg;
@@ -803,6 +805,7 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    if (msg.t === 'ping') return send(ws, { t: 'pong' });
     if (ws.user && ws.user.role !== 'admin' && 'name' in msg) msg.name = ws.user.name; // al tavolo si gioca col nome dell'account
 
     if (autoplay.isAutoMessage(msg)) return autoplay.handle(ws, msg); // tavoli con regole automatiche
@@ -873,6 +876,18 @@ if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
   secure = https.createServer({ cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }, server.listeners('request')[0]);
   secure.on('upgrade', upgrade);
 }
+
+// Un telefono sparito senza salutare (rete persa, app chiusa dal sistema) non chiude il socket: lo si scopre col ping
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (!ws.isAlive) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, 30 * 1000).unref();
 
 setInterval(() => {
   sweepRooms(rooms, closeLanRoom);
