@@ -187,7 +187,11 @@
   function render() {
     const root = $('#auto');
     if (!M) { root.innerHTML = ''; return; }
+    // ridisegnare non deve riportare in cima le liste che il giocatore sta scorrendo
+    const scrollers = '.mg-side, .auto-side, .auto-prompt, .acards, .mg-row';
+    const scrolled = [...root.querySelectorAll(scrollers)].map((el) => [el.scrollTop, el.scrollLeft]);
     root.innerHTML = G() ? (CT.compact() ? compactHtml() : gameHtml()) : lobbyHtml();
+    root.querySelectorAll(scrollers).forEach((el, i) => { if (scrolled[i]) [el.scrollTop, el.scrollLeft] = scrolled[i]; });
     if (G()) $('#auto-log')?.scrollTo(0, 1e9);
   }
 
@@ -301,7 +305,7 @@
   function stackHtml() {
     const s = G().stack;
     if (!s.length) return '<div class="muted">La Pila è vuota.</div>';
-    return [...s].reverse().map((o, i) => `<div class="astack-item ${i === 0 ? 'top' : ''}" data-oid="${o.id}" data-zone="stack">
+    return [...s].reverse().map((o, i) => `<div class="astack-item ${i === 0 ? 'top' : ''}" data-oid="${o.id}" data-img="${esc(o.img || '')}" data-zone="stack">
       <b>${esc(o.name)}</b>${o.isAbility ? ' <span class="muted">(abilità)</span>' : ''}
       <span class="muted">di ${esc(playerName(o.controller))}${o.targets?.length ? ` → ${o.targets.map((t) => esc(targetLabel(t))).join(', ')}` : ''}</span></div>`).join('');
   }
@@ -373,7 +377,7 @@
     const plus = countersText(o) ? `<span class="mc-cnt">${countersText(o)}</span>` : '';
     const sick = o.sick ? '<span class="mc-sick">💤</span>' : '';
     const n = count > 1 ? `<span class="mc-n">×${count}</span>` : '';
-    return `<div class="${classes.join(' ')}" data-oid="${o.id}" data-zone="${zone}" title="${esc(o.name)}"
+    return `<div class="${classes.join(' ')}" data-oid="${o.id}" data-img="${esc(o.img || '')}" data-zone="${zone}" title="${esc(o.name)}"
       data-fx="c${o.cardId}" data-fx-dmg="${o.damage || 0}" data-fx-token="${o.isToken ? 1 : 0}">
       <span class="mc-art" ${art ? `style="background-image:url('${esc(art)}')"` : ''}></span>
       <span class="mc-name">${esc(o.name)}</span>${pt}${plus}${sick}${n}${o.manual ? '<span class="amark">✋</span>' : ''}</div>`;
@@ -456,7 +460,7 @@
         <span class="muted">✋${hand.length} · 📚${mine.libraryCount}</span>${pool ? `<span class="apool">${pool}</span>` : ''}
         <span class="mg-step">T${g.turn} · ${esc(step)}</span>
         <span class="mg-status ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
-        ${top ? `<span class="mg-stack" id="mg-stack" data-oid="${top.id}" data-zone="stack">Pila: ${esc(top.name)}${g.stack.length > 1 ? ` +${g.stack.length - 1}` : ''}</span>` : ''}
+        ${top ? `<span class="mg-stack" id="mg-stack" data-oid="${top.id}" data-img="${esc(top.img || '')}" data-zone="stack">Pila: ${esc(top.name)}${g.stack.length > 1 ? ` +${g.stack.length - 1}` : ''}</span>` : ''}
         <span class="grow"></span>${pilesHtml(mine)}
       </div>
       <section class="mg-field mg-me" data-fx-area="f${M.me}">${fieldHtml(mine, keys, false)}</section>
@@ -466,7 +470,7 @@
         if (picks.includes(o.id)) c.push('sel');
         if (o.id === raised) c.push('raised');
         if (myPriority() && !flow && o.playable) c.push(o.playable.ok ? 'can' : 'cant');
-        return `<div class="${c.join(' ')}" style="--i:${k};${o.img ? `background-image:url('${esc(o.img)}')` : ''}" data-oid="${o.id}" data-zone="hand" data-fx="c${o.cardId}" title="${esc(o.name)}">${o.img ? '' : `<span>${esc(o.name)}</span>`}</div>`;
+        return `<div class="${c.join(' ')}" style="--i:${k};${o.img ? `background-image:url('${esc(o.img)}')` : ''}" data-oid="${o.id}" data-img="${esc(o.img || '')}" data-zone="hand" data-fx="c${o.cardId}" title="${esc(o.name)}">${o.img ? '' : `<span>${esc(o.name)}</span>`}</div>`;
       }).join('') || '<span class="muted">Mano vuota</span>'}</div>
       <aside class="mg-side">
         <div id="auto-preview" class="mg-preview">${pv?.img ? `<img src="${esc(pv.img)}" alt="${esc(pv.name)}">${CT.credit(pv.img)}${manualTextHtml(pv)}` : `<span class="muted">${CT.hover() ? 'Passa sopra una carta per vederla' : 'Tocca una carta per vederla'}</span>`}</div>
@@ -590,13 +594,12 @@
           ${manualToolsHtml()}<button class="primary" data-auto="manual-done">Fatto</button>`;
       case 'search':
       case 'chooseCards':
-        return `<b>${d.type === 'search' ? `Cerca nel grimorio (fino a ${d.max})` : esc(d.prompt || `Scegli ${d.count} carte`)}</b>
-          <div class="acards">${d.cards.map((o) => `<div class="apick ${picks.includes(o.id) ? 'on' : ''}" data-pick="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">` : esc(o.name)}</div>`).join('') || '<span class="muted">Nessuna carta valida</span>'}</div>
-          <button class="primary" data-auto="confirm-cards" ${d.type === 'chooseCards' && picks.length !== d.count ? 'disabled' : ''}>Conferma</button>`;
+        return `<div class="adecide-head"><b>${d.type === 'search' ? `Cerca nel grimorio (${picks.length}/${d.max})` : esc(d.prompt || `Scegli ${d.count} carte`)}</b>
+          <button class="primary" data-auto="confirm-cards" ${d.type === 'chooseCards' && picks.length !== d.count ? 'disabled' : ''}>Conferma</button></div>
+          <div class="acards">${d.cards.map((o) => `<div class="apick ${picks.includes(o.id) ? 'on' : ''}" data-pick="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="${esc(o.name)}">` : esc(o.name)}</div>`).join('') || '<span class="muted">Nessuna carta valida</span>'}</div>`;
       case 'scry':
-        return `<b>Profetizza ${d.cards.length}</b><p>Clicca le carte da mettere in fondo al grimorio.</p>
-          <div class="acards">${d.cards.map((o) => `<div class="apick ${scryBottom.has(o.id) ? 'bottom' : ''}" data-scry="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="">` : esc(o.name)}<span>${scryBottom.has(o.id) ? 'in fondo' : 'in cima'}</span></div>`).join('')}</div>
-          <button class="primary" data-auto="confirm-scry">Conferma</button>`;
+        return `<div class="adecide-head"><b>Profetizza ${d.cards.length}</b><button class="primary" data-auto="confirm-scry">Conferma</button></div><p>Clicca le carte da mettere in fondo al grimorio.</p>
+          <div class="acards">${d.cards.map((o) => `<div class="apick ${scryBottom.has(o.id) ? 'bottom' : ''}" data-scry="${o.id}">${o.img ? `<img src="${esc(o.img)}" alt="">` : esc(o.name)}<span>${scryBottom.has(o.id) ? 'in fondo' : 'in cima'}</span></div>`).join('')}</div>`;
       default:
         return `<p>Decisione: ${esc(d.type)}</p>`;
     }
@@ -752,17 +755,19 @@
   }
 
   function abilityMenu(o, x, y) {
-    if (!myPriority()) return toast('Non hai la priorità');
+    if (!myPriority()) return showDetail(o, 'Non hai la priorità');
     const abilities = o.abilities || [];
-    if (!abilities.length) return toast(`${o.name} non ha abilità da attivare`);
+    if (!abilities.length) return showDetail(o, `${o.name} non ha abilità da attivare`);
     const label = (ab) => {
       const parts = [ab.tap ? '{T}' : '', ab.cost, ab.sacrifice ? 'sacrifica' : '', ab.discard ? 'scarta' : ''].filter(Boolean).join(', ');
       return ab.kind === 'mana' ? `Mana: ${ab.colors ? `un colore a scelta (${ab.colors.join('/')})` : ab.produce}${parts ? ` (${parts})` : ''}` : `Attiva: ${parts || 'senza costo'}`;
     };
-    CT.showMenu(x, y, o.name, abilities.map((ab) => {
+    const options = abilities.map((ab) => {
       const no = ab.playable && !ab.playable.ok;
       return [no ? `${label(ab)} — non ora: ${ab.playable.message}` : label(ab), () => (no ? toast(`Perché no? ${ab.playable.message}`, 5000) : useAbility(o, ab))];
-    }));
+    });
+    if (isTouchArena() && o.img) options.unshift(['🔍 Vedi la carta', () => CT.zoom(o.img, o.name)]);
+    CT.showMenu(x, y, o.name, options);
   }
 
   // ---------- Interazione ----------
@@ -859,7 +864,10 @@
 
   function pickFlowTarget(target) {
     const step = flow.steps[flow.i];
-    if (!step.options.some((t) => keyOf(t) === keyOf(target))) return toast('Non è un bersaglio valido per questa magia o abilità');
+    if (!step.options.some((t) => keyOf(t) === keyOf(target))) {
+      const o = target.object != null ? findObject(target.object) : null;
+      return o ? showDetail(o, 'Non è un bersaglio valido per questa magia o abilità') : toast('Non è un bersaglio valido per questa magia o abilità');
+    }
     flow.action.targets.push(target);
     flow.i++;
     return advanceFlow();
@@ -883,6 +891,14 @@
     }
     if (attack && pid !== M.me) { attack.defender = pid; render(); }
     return undefined;
+  }
+
+  const isTouchArena = () => CT.compact() && !CT.hover();
+
+  // Sul telefono un tocco che non ha altro effetto mostra la carta; col mouse basta passarci sopra, quindi resta l'avviso
+  function showDetail(o, message) {
+    if (isTouchArena() && o.img) return CT.zoom(o.img, o.name);
+    return message ? toast(message) : undefined;
   }
 
   function clickObject(id, zone, e) {
@@ -909,16 +925,16 @@
     raised = null;
     if (zone === 'hand' || (zone === 'command' && o.owner === M.me)) return castCard(o);
     if (zone === 'battlefield' && o.controller === M.me) return abilityMenu(o, e.clientX, e.clientY);
-    return undefined;
+    return showDetail(o);
   }
 
   function clickDuringDecision(d, o, zone) {
     if (d.type === 'chooseTarget') {
-      if (!d.options.some((t) => t.object === o.id)) return toast('Non è un bersaglio valido');
+      if (!d.options.some((t) => t.object === o.id)) return showDetail(o, 'Non è un bersaglio valido');
       return act({ type: 'chooseTarget', target: { object: o.id } });
     }
     if (d.type === 'chooseSacrifice') {
-      if (!d.options.includes(o.id)) return toast('Scegli una delle creature evidenziate');
+      if (!d.options.includes(o.id)) return showDetail(o, 'Scegli una delle creature evidenziate');
       return act({ type: 'chooseSacrifice', object: o.id });
     }
     if ((d.type === 'discard' || d.type === 'putBack') && zone === 'hand') {
@@ -942,7 +958,7 @@
         return render();
       }
     }
-    return toast(`Prima va completata la scelta: ${DECISION_NAMES[d.type] || d.type}`);
+    return showDetail(o, `Prima va completata la scelta: ${DECISION_NAMES[d.type] || d.type}`);
   }
 
   function pileModal(pid, zone) {
