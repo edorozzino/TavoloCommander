@@ -95,7 +95,7 @@ async function handleApi(req, res, url) {
     const addresses = [];
     if (publicAccess) addresses.push({ url: publicAccess.url, label: publicAccess.funnel ? 'Da internet' : 'Rete Tailscale', note: publicAccess.funnel ? '' : 'Serve Tailscale acceso sul dispositivo' });
     const tailnet = (ip) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip); // indirizzi interni di Tailscale
-    for (const ip of ips.filter((x) => !tailnet(x))) addresses.push({ url: `http://${ip}:${PORT}`, label: 'Stessa Wi-Fi', note: 'Solo per chi è collegato alla tua rete' });
+    if (!process.env.RENDER) for (const ip of ips.filter((x) => !tailnet(x))) addresses.push({ url: `http://${ip}:${PORT}`, label: 'Stessa Wi-Fi', note: 'Solo per chi è collegato alla tua rete' });
     return sendJson(res, 200, { addresses, key: auth.enabled ? PASSWORD : null });
   }
   if (resource === 'starter-decks' && req.method === 'GET') {
@@ -764,26 +764,34 @@ if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
   secure.on('upgrade', upgrade);
 }
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log('\nTavolo Commander avviato!');
-  console.log(`  Su questo computer:      http://localhost:${PORT}  (installabile come app)`);
-  for (const ip of ips) console.log(`  Dagli altri dispositivi: http://${ip}:${PORT}`);
-  if (secure) {
-    secure.listen(HTTPS_PORT, '0.0.0.0', () => {
-      for (const ip of ips) console.log(`  In HTTPS (app sui telefoni): https://${ip}:${HTTPS_PORT}`);
-    });
-  } else {
-    console.log('  Per installare l\'app sui telefoni serve HTTPS: vedi "App installabile" nel README.');
-  }
-  if (GENERATED_PASSWORD) console.log(`  Password di questa partita (generata ora): ${PASSWORD}`);
-  else console.log(auth.enabled ? '  Accesso protetto da password (TAVOLO_PASSWORD).' : '  Accesso libero: per chiedere una password avvia con TAVOLO_PASSWORD=...');
-  console.log('\nPremi Ctrl+C per fermare il server.\n');
-  if (USE_TAILSCALE) tailscale.start(PORT, { funnel: FUNNEL, password: PASSWORD }).then((info) => { publicAccess = info; });
+function start() {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log('\nTavolo Commander avviato!');
+    console.log(`  Su questo computer:      http://localhost:${PORT}  (installabile come app)`);
+    for (const ip of ips) console.log(`  Dagli altri dispositivi: http://${ip}:${PORT}`);
+    if (secure) {
+      secure.listen(HTTPS_PORT, '0.0.0.0', () => {
+        for (const ip of ips) console.log(`  In HTTPS (app sui telefoni): https://${ip}:${HTTPS_PORT}`);
+      });
+    } else {
+      console.log('  Per installare l\'app sui telefoni serve HTTPS: vedi "App installabile" nel README.');
+    }
+    if (GENERATED_PASSWORD) console.log(`  Password di questa partita (generata ora): ${PASSWORD}`);
+    else console.log(auth.enabled ? '  Accesso protetto da password (TAVOLO_PASSWORD).' : '  Accesso libero: per chiedere una password avvia con TAVOLO_PASSWORD=...');
+    console.log('\nPremi Ctrl+C per fermare il server.\n');
+    if (USE_TAILSCALE) tailscale.start(PORT, { funnel: FUNNEL, password: PASSWORD }).then((info) => { publicAccess = info; });
+  });
+}
+
+decks.init().then(start).catch((err) => {
+  console.error(err.message);
+  process.exit(1);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     if (USE_TAILSCALE) await tailscale.stop(FUNNEL);
+    await decks.flush(); // l'hosting spegne il server con SIGTERM: l'ultimo salvataggio deve arrivare
     process.exit(0);
   });
 }

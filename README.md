@@ -78,6 +78,17 @@ quello della rete Wi-Fi; quando ce n'è più d'uno si sceglie in cima alla fines
 Dopo 20 password sbagliate in 10 minuti il login si blocca per 10 minuti (chi è già entrato continua a giocare).
 `TAVOLO_PASSWORD=auto` genera la password a ogni avvio anche con `npm start` e `npm run remote`.
 
+## Online gratis su Render
+
+Il server resta su internet senza tenere acceso il PC. Sul piano gratuito si spegne dopo 15 minuti senza traffico e impiega circa un minuto a ripartire: l'app mostra una schermata di attesa. Una partita in corso si perde se il servizio si riavvia; i mazzi restano nel database.
+
+1. Crea un database Redis gratuito su [Upstash](https://upstash.com) e copia `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` dalla sezione REST.
+2. Su [Render](https://render.com) scegli **New → Blueprint** e collega questo repository: `render.yaml` prepara il servizio.
+3. Quando li chiede, inserisci i due valori di Upstash e una `TAVOLO_PASSWORD` a tua scelta.
+4. Apri l'indirizzo `onrender.com` assegnato e invita gli amici con **📨 Invita**.
+
+Al primo avvio i mazzi di `data/decks.json` vengono copiati nel database. Se il database non risponde il server non parte, per non sovrascrivere i mazzi con un archivio vuoto.
+
 ## Partita con regole automatiche
 
 Dal menu principale, **Partita con regole** apre un tavolo in cui il motore applica le regole di Magic: fasi e passi,
