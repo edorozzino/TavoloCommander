@@ -78,10 +78,10 @@ function createAuth(password) {
     return `${COOKIE}=${token}; Path=/; Max-Age=${ONE_YEAR}; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
   }
 
-  return { enabled, isAuthorized, isPublic, checkPassword, attempt, loginCookie };
+  return { enabled, isAuthorized, isPublic, checkPassword, attempt, loginCookie, cookies };
 }
 
-function loginPage(error = '') {
+function loginPage(error = '', { inviteOnly = false } = {}) {
   return `<!doctype html>
 <html lang="it">
 <head>
@@ -98,12 +98,14 @@ function loginPage(error = '') {
   input { background: #1e2129; color: inherit; }
   button { background: #4f8fe0; border-color: #4f8fe0; color: #fff; cursor: pointer; }
   p { margin: 0; color: #e05252; text-align: center; }
+  small { color: #a9adb8; text-align: center; }
 </style>
 </head>
 <body>
 <form method="post" action="/login">
   <h1>Tavolo Commander</h1>
-  <input type="password" name="password" placeholder="Password del tavolo" autocomplete="current-password" autofocus required>
+  ${inviteOnly ? '<small>Si entra solo su invito: apri il link ricevuto, oppure incollalo qui.</small>' : ''}
+  <input type="password" name="password" placeholder="${inviteOnly ? 'Link d\'invito o password admin' : 'Password del tavolo'}" autocomplete="current-password" autofocus required>
   <button type="submit">Entra</button>
   ${error ? `<p>${error}</p>` : ''}
 </form>

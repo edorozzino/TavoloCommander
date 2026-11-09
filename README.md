@@ -84,10 +84,22 @@ Il server resta su internet senza tenere acceso il PC. Sul piano gratuito si spe
 
 1. Crea un database Redis gratuito su [Upstash](https://upstash.com) e copia `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` dalla sezione REST.
 2. Su [Render](https://render.com) scegli **New → Blueprint** e collega questo repository: `render.yaml` prepara il servizio.
-3. Quando li chiede, inserisci i due valori di Upstash e una `TAVOLO_PASSWORD` a tua scelta.
-4. Apri l'indirizzo `onrender.com` assegnato e invita gli amici con **📨 Invita**.
+3. Quando li chiede, inserisci i due valori di Upstash e una `TAVOLO_ADMIN_PASSWORD` lunga e a tua scelta.
+4. Apri l'indirizzo `onrender.com`, entra con quella password e crea gli inviti da **Accessi**.
 
 Al primo avvio i mazzi di `data/decks.json` vengono copiati nel database. Se il database non risponde il server non parte, per non sovrascrivere i mazzi con un archivio vuoto.
+
+## Accesso su invito
+
+Con `TAVOLO_ADMIN_PASSWORD` impostata si entra solo su invito (la vecchia `TAVOLO_PASSWORD` non viene usata). Da **Accessi** l'admin crea un link che vale per una sola persona e scade dopo 48 ore: chi lo apre sceglie un nome e resta collegato su quel dispositivo. Per un dispositivo nuovo serve un nuovo link; sull'app installata su iPhone si incolla nella pagina di ingresso.
+
+| Ruolo | Può fare |
+|---|---|
+| Admin | Inviti, revoche, tutti i mazzi |
+| Giocatore | Gioca e crea mazzi; modifica e cancella solo i propri |
+| Ospite | Gioca soltanto |
+
+I mazzi creati prima degli inviti appartengono all'admin. Revocando una persona la sua connessione si chiude subito. Il database conserva solo gli hash di link e sessioni.
 
 ## Partita con regole automatiche
 

@@ -992,3 +992,5 @@ button.urgent:not(:disabled) { animation: pass-pulse 1.1s ease-in-out infinite; 
 
 /* Ricerca nel grimorio e simili: titolo e Conferma restano visibili mentre si scorre la lista */
 .adecide-head { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0; background: var(--panel-2); }
+
+a.mm-item { color: inherit; text-decoration: none; }

@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 
 const MOD = require.resolve('../decks');
+const STORE = require.resolve('../store');
 const KEY = 'tavolo-commander:decks';
 const INPUT = { name: 'Goblin', commanders: ['Krenko, Mob Boss'], cards: [{ name: 'Mountain', count: 99 }] };
 let dir, db, failing, calls, realFetch;
@@ -13,6 +14,7 @@ let dir, db, failing, calls, realFetch;
 function load(local) {
   if (local) fs.writeFileSync(process.env.DECKS_FILE, JSON.stringify(local));
   delete require.cache[MOD];
+  delete require.cache[STORE];
   return require('../decks');
 }
 

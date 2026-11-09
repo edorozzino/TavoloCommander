@@ -63,7 +63,8 @@
       if (invited && $('#lobby-name').value.trim()) join();
     };
     ws.onmessage = (ev) => handle(JSON.parse(ev.data));
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
+      if (ev.code === 4001) return location.reload(); // accesso revocato: si torna alla pagina di ingresso
       $('#offline').classList.remove('hidden'); // avviso fisso finché il server non torna raggiungibile
       setTimeout(connect, 1500);
     };
@@ -1042,6 +1043,12 @@
     $('#install-app').classList.add('hidden');
   });
   window.addEventListener('appinstalled', () => toast('App installata: la trovi tra le tue app.'));
+
+  // Con gli inviti il nome è quello dell'account; l'admin vede anche il pannello degli accessi
+  fetch('/api/me').then((r) => r.json()).then((me) => {
+    if (me.role === 'admin') $('#lobby-admin').classList.remove('hidden');
+    else if (me.name) Object.assign($('#lobby-name'), { value: me.name, readOnly: true });
+  }).catch(() => {});
 
   connect();
 })();

@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { lookupCards, lookupToken, searchCards } = require('./scryfall');
 const decks = require('./decks');
+const { createAccounts, createAccountsStore, createAccountAuth, canCreateDeck, canEditDeck, AccountError, INVITE_LINK } = require('./accounts');
+const { invitePage, inviteExpiredPage, adminPage } = require('./pages');
 const { STARTER_DECKS } = require('./engine/decks');
 const autoplay = require('./autoplay');
 const { createAuth, loginPage, generatePassword } = require('./auth');
@@ -22,9 +24,12 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const FUNNEL = process.argv.includes('--funnel');
 const USE_TAILSCALE = FUNNEL || process.argv.includes('--tailscale') || process.env.TAILSCALE === '1';
 // TAVOLO_PASSWORD=auto, oppure il tavolo pubblico su internet senza password, ne genera una nuova a ogni avvio
-const GENERATED_PASSWORD = process.env.TAVOLO_PASSWORD === 'auto' || (FUNNEL && !process.env.TAVOLO_PASSWORD);
-const PASSWORD = GENERATED_PASSWORD ? generatePassword() : process.env.TAVOLO_PASSWORD;
-const auth = createAuth(PASSWORD);
+const ADMIN_PASSWORD = process.env.TAVOLO_ADMIN_PASSWORD; // se c'è, si entra solo su invito (vedi accounts.js)
+const GENERATED_PASSWORD = !ADMIN_PASSWORD && (process.env.TAVOLO_PASSWORD === 'auto' || (FUNNEL && !process.env.TAVOLO_PASSWORD));
+const PASSWORD = ADMIN_PASSWORD ? undefined : (GENERATED_PASSWORD ? generatePassword() : process.env.TAVOLO_PASSWORD);
+const accountsStore = ADMIN_PASSWORD ? createAccountsStore() : null;
+const accounts = accountsStore ? createAccounts({ store: accountsStore }) : null;
+const auth = accounts ? createAccountAuth(ADMIN_PASSWORD, accounts) : createAuth(PASSWORD);
 let publicAccess = null; // { url, funnel } quando il tavolo è pubblicato con Tailscale
 const MAX_PLAYERS = 6;
 const COLORS = ['#e05252', '#4f8fe0', '#4fbf6a', '#d9a33b', '#a565d9', '#3bbfbf'];
@@ -110,8 +115,14 @@ async function handleApi(req, res, url) {
       const d = decks.get(rid);
       return d ? sendJson(res, 200, d) : sendJson(res, 404, { error: 'Mazzo non trovato' });
     }
-    if (req.method === 'POST' && !rid) return sendJson(res, 200, decks.put(null, await readBody(req)));
-    if (req.method === 'PUT' && rid) return sendJson(res, 200, decks.put(rid, await readBody(req)));
+    const user = auth.user?.(req) ?? null;
+    const noPermission = (message) => sendJson(res, 403, { error: message });
+    const existing = rid ? decks.get(rid) : null;
+    if (req.method !== 'GET' && !canCreateDeck(user)) return noPermission('Con un accesso da ospite non puoi salvare mazzi');
+    if ((req.method === 'PUT' || req.method === 'DELETE') && existing && !canEditDeck(user, existing)) return noPermission('Questo mazzo è di un altro giocatore');
+    const signed = async () => ({ ...(await readBody(req)), ...(user ? { author: user.name } : {}) });
+    if (req.method === 'POST' && !rid) return sendJson(res, 200, decks.put(null, await signed(), user?.id));
+    if (req.method === 'PUT' && rid) return sendJson(res, 200, decks.put(rid, await signed(), user?.id));
     if (req.method === 'DELETE' && rid) return sendJson(res, decks.remove(rid) ? 200 : 404, {});
   }
   sendJson(res, 404, { error: 'Non trovato' });
@@ -131,7 +142,7 @@ function readForm(req) {
 
 function sendLogin(res, status, error) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(loginPage(error));
+  res.end(loginPage(error, { inviteOnly: Boolean(auth.inviteOnly) }));
 }
 
 // Dopo il login si va alla pagina indicata da ?next= (per esempio il tavolo dell'invito), solo se è di questo sito
@@ -141,8 +152,48 @@ function nextPage(url) {
 }
 
 // Login dal modulo (POST) oppure dal link con la password già dentro (/login?k=...)
+function sendPage(res, status, html) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  res.end(html);
+}
+
+async function handleInvite(req, res, token) {
+  if (!accounts.isInviteValid(token)) return sendPage(res, 410, inviteExpiredPage());
+  if (req.method !== 'POST') return sendPage(res, 200, invitePage(token));
+  const name = (await readForm(req)).get('name');
+  try {
+    const { session } = accounts.redeem(token, name);
+    res.writeHead(303, { 'Set-Cookie': auth.sessionCookie(req, session), Location: '/', 'Cache-Control': 'no-store' });
+    res.end();
+  } catch (err) {
+    if (!(err instanceof AccountError)) throw err;
+    if (err.code === 'INVITE_INVALID') return sendPage(res, 410, inviteExpiredPage());
+    sendPage(res, 400, invitePage(token, err.message));
+  }
+}
+
+async function handleAdminApi(req, res, parts) {
+  const [what, id] = parts;
+  if (what === 'state' && req.method === 'GET') return sendJson(res, 200, accounts.state());
+  if (what === 'invites' && req.method === 'POST' && !id) return sendJson(res, 200, accounts.createInvite((await readBody(req)).role));
+  if (what === 'invites' && req.method === 'DELETE') return sendJson(res, accounts.cancelInvite(id) ? 200 : 404, {});
+  if (what === 'users' && req.method === 'PATCH') return sendJson(res, accounts.setRole(id, (await readBody(req)).role) ? 200 : 404, {});
+  if (what === 'users' && req.method === 'DELETE') {
+    if (!accounts.removeUser(id)) return sendJson(res, 404, {});
+    for (const ws of wss.clients) if (ws.user?.id === id) ws.close(4001, 'Accesso revocato');
+    return sendJson(res, 200, {});
+  }
+  return sendJson(res, 404, { error: 'Non trovato' });
+}
+
 async function handleLogin(req, res, url) {
   const given = req.method === 'POST' ? (await readForm(req)).get('password') : url.searchParams.get('k');
+  const pastedInvite = accounts && String(given || '').match(INVITE_LINK);
+  if (pastedInvite) { // l'app installata su iPhone non può aprire i link: si incolla qui
+    res.writeHead(303, { Location: `/invito/${pastedInvite[1]}` });
+    res.end();
+    return;
+  }
   const result = auth.attempt(given || '');
   if (result === 'ok') {
     res.writeHead(303, { 'Set-Cookie': auth.loginCookie(req), Location: nextPage(url) });
@@ -156,7 +207,12 @@ async function handleLogin(req, res, url) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (auth.enabled) {
-    if (url.pathname === '/login' && (req.method === 'POST' || url.searchParams.has('k'))) return handleLogin(req, res, url);
+    const invite = accounts && url.pathname.match(/^\/invito\/([a-f0-9]{64})$/);
+    if (invite) {
+      handleInvite(req, res, invite[1]).catch((e) => { console.error(e); res.destroy(); });
+      return;
+    }
+    if (url.pathname === '/login' && (req.method === 'POST' || (!accounts && url.searchParams.has('k')))) return handleLogin(req, res, url);
     if (!auth.isAuthorized(req) && !auth.isPublic(url.pathname)) {
       if (url.pathname.startsWith('/api/')) return sendJson(res, 401, { error: 'Serve la password del tavolo' });
       return sendLogin(res, 401);
@@ -166,6 +222,20 @@ const server = http.createServer((req, res) => {
     res.writeHead(303, { Location: nextPage(url) });
     res.end();
     return;
+  }
+  if (accounts && (url.pathname === '/admin' || url.pathname.startsWith('/api/admin/'))) {
+    if (auth.user(req)?.role !== 'admin') return sendJson(res, 403, { error: 'Solo per l\'admin' });
+    if (url.pathname === '/admin') return sendPage(res, 200, adminPage());
+    handleAdminApi(req, res, url.pathname.split('/').slice(3)).catch((e) => {
+      if (e instanceof AccountError) return sendJson(res, 400, { error: e.message });
+      console.error(e);
+      sendJson(res, 500, { error: 'Errore interno' });
+    });
+    return;
+  }
+  if (url.pathname === '/api/me') {
+    const me = auth.user?.(req);
+    return sendJson(res, 200, me ? { name: me.name, role: me.role } : {});
   }
   if (url.pathname.startsWith('/api/')) {
     handleApi(req, res, url).catch((e) => {
@@ -688,7 +758,8 @@ function broadcast(room) {
   for (const ws of room.sockets) send(ws, { t: 'state', s: buildView(room, ws.pid) });
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  ws.user = auth.user?.(req) ?? null; // con gli inviti ogni connessione ha il suo utente, revocabile in tempo reale
   ws.on('message', async (raw) => {
     let msg;
     try {
@@ -696,6 +767,8 @@ wss.on('connection', (ws) => {
     } catch {
       return;
     }
+
+    if (ws.user && ws.user.role !== 'admin' && 'name' in msg) msg.name = ws.user.name; // al tavolo si gioca col nome dell'account
 
     if (autoplay.isAutoMessage(msg)) return autoplay.handle(ws, msg); // tavoli con regole automatiche
 
@@ -783,7 +856,7 @@ function start() {
   });
 }
 
-decks.init().then(start).catch((err) => {
+Promise.all([decks.init(), accountsStore?.init()]).then(start).catch((err) => {
   console.error(err.message);
   process.exit(1);
 });
@@ -791,6 +864,7 @@ decks.init().then(start).catch((err) => {
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     if (USE_TAILSCALE) await tailscale.stop(FUNNEL);
+    await accountsStore?.flush();
     await decks.flush(); // l'hosting spegne il server con SIGTERM: l'ultimo salvataggio deve arrivare
     process.exit(0);
   });
