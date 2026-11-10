@@ -116,7 +116,7 @@
     }
     if (msg.t === 'error' && window.Auto?.active()) return window.Auto.handle(msg);
     if (msg.t === 'joined') {
-      session = { ...session, pid: msg.pid, room: msg.room };
+      session = { ...session, pid: msg.pid, room: msg.room, key: msg.key };
       store.set('ct-session', session);
       $('#lobby').classList.add('hidden');
       $('#game').classList.remove('hidden');
@@ -967,7 +967,7 @@
     if (!name) { $('#lobby-error').textContent = 'Scrivi il tuo nome.'; return; }
     store.set('ct-name', name);
     // Se rientro nello stesso tavolo riuso il mio posto
-    session = { name, room, pid: session?.room === room ? session.pid : undefined };
+    session = { name, room, pid: session?.room === room ? session.pid : undefined, key: session?.room === room ? session.key : undefined };
     $('#lobby-error').textContent = '';
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'join', ...session }));
   }

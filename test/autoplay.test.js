@@ -176,14 +176,14 @@ test('se chi ha creato il tavolo si scollega in sala, il tavolo passa a un altro
 test('chi lascia a partita in corso viene sostituito dal computer e può rientrare', async () => {
   const { a, b } = await table('abbandono');
   await autoplay.handle(a, { t: 'autoStart' });
-  const seat = b.last('autoJoined').pid;
+  const { pid: seat, key } = b.last('autoJoined');
   await autoplay.handle(b, { t: 'autoLeave' });
   const left = () => a.last('autoState').lobby.players.find((p) => p.id === seat);
   assert.equal(left().bot, true);
   await keepHands(a); // il computer risponde al mulligan al posto di chi è uscito
   assert.notEqual(a.last('autoState').game.step, 'mulligan');
   const back = fakeSocket();
-  await autoplay.handle(back, { t: 'autoJoin', room: 'abbandono', pid: seat });
+  await autoplay.handle(back, { t: 'autoJoin', room: 'abbandono', pid: seat, key });
   assert.equal(left().bot, false);
 });
 
@@ -195,4 +195,34 @@ test('il tempo per mossa lo sceglie solo chi ha creato il tavolo', async () => {
   assert.equal(a.last('autoState').lobby.moveLimit, 60);
   await autoplay.handle(a, { t: 'autoTimer', seconds: 7 });
   assert.equal(a.last('autoState').lobby.moveLimit, 0);
+});
+
+test('il posto di un altro non si prende conoscendone solo l\'identificativo', async () => {
+  const { a, b } = await table('posto-sicuro');
+  const victim = a.last('autoJoined').pid;
+  const thief = fakeSocket();
+  await autoplay.handle(thief, { t: 'autoJoin', room: 'posto-sicuro', pid: victim, name: 'Ladro' });
+  assert.notEqual(thief.last('autoJoined').pid, victim);
+  const wrongKey = fakeSocket();
+  await autoplay.handle(wrongKey, { t: 'autoJoin', room: 'posto-sicuro', pid: victim, key: b.last('autoJoined').key });
+  assert.notEqual(wrongKey.last('autoJoined').pid, victim);
+});
+
+test('con un account il posto altrui resta protetto anche con la chiave giusta', async () => {
+  const a = { ...fakeSocket(), user: { id: 'u1' } };
+  await autoplay.handle(a, { t: 'autoJoin', room: 'posto-account', name: 'Luca' });
+  const { pid, key } = a.last('autoJoined');
+  const other = { ...fakeSocket(), user: { id: 'u2' } };
+  await autoplay.handle(other, { t: 'autoJoin', room: 'posto-account', pid, key, name: 'Marco' });
+  assert.notEqual(other.last('autoJoined').pid, pid);
+});
+
+test('il posto di un giocatore computer non si può occupare', async () => {
+  const a = fakeSocket();
+  await autoplay.handle(a, { t: 'autoJoin', room: 'posto-bot', name: 'Anna' });
+  await autoplay.handle(a, { t: 'autoAddBot' });
+  const bot = a.last('autoState').lobby.players.find((p) => p.bot).id;
+  const thief = fakeSocket();
+  await autoplay.handle(thief, { t: 'autoJoin', room: 'posto-bot', pid: bot, name: 'Ladro' });
+  assert.notEqual(thief.last('autoJoined').pid, bot);
 });

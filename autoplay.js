@@ -12,6 +12,7 @@ const lessons = require('./lessons');
 const { botMove } = require('./engine/bot');
 
 const { sweepRooms } = require('./room-sweep');
+const { claimSeat, newSeatKey } = require('./seats');
 const { nextPassMode, shouldAutoPass, autoAnswer } = require('./autopass');
 
 const rooms = new Map();
@@ -311,12 +312,13 @@ async function handle(ws, msg) {
     const code = String(msg.room || 'tavolo').trim().toLowerCase().slice(0, 20) || 'tavolo';
     const room = getRoom(code);
     // con gli account si rientra nel proprio posto anche da un link o da un altro dispositivo
-    let p = (msg.pid && room.players.get(msg.pid)) || (ws.user && [...room.players.values()].find((x) => x.userId === ws.user.id));
+    let p = claimSeat(room, msg, ws.user);
     if (!p) {
       if (room.game) return send(ws, { t: 'error', msg: 'La partita su questo tavolo è già iniziata.' });
       if (room.players.size >= MAX_PLAYERS) return send(ws, { t: 'error', msg: `Il tavolo è pieno (max ${MAX_PLAYERS} giocatori).` });
       p = { id: id(), name: String(msg.name || 'Giocatore').trim().slice(0, 24) || 'Giocatore', deckId: null, deckName: null, connected: true };
       p.userId = ws.user?.id;
+      p.key = newSeatKey();
       room.players.set(p.id, p);
       room.order.push(p.id);
       if (!room.host) room.host = p.id;
@@ -332,7 +334,7 @@ async function handle(ws, msg) {
     ws.autoRoom = room;
     ws.pid = p.id;
     room.sockets.add(ws);
-    send(ws, { t: 'autoJoined', pid: p.id, room: code });
+    send(ws, { t: 'autoJoined', pid: p.id, room: code, key: p.key });
     if (!room.game) prefetchDecks().then(() => broadcast(room), () => {}); // percentuali dei mazzi aggiornate
     broadcast(room);
     return scheduleBots(room);

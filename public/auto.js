@@ -47,7 +47,7 @@
   const act = (action) => send({ t: 'autoAct', action });
 
   function join(name, room) {
-    session = { name, room, pid: session?.room === room ? session.pid : undefined };
+    session = { name, room, pid: session?.room === room ? session.pid : undefined, key: session?.room === room ? session.key : undefined };
     send({ t: 'autoJoin', ...session });
   }
 
@@ -69,7 +69,7 @@
       return renderAcademy();
     }
     if (msg.t === 'autoJoined') {
-      session = { ...session, pid: msg.pid, room: msg.room };
+      session = { ...session, pid: msg.pid, room: msg.room, key: msg.key };
       CT.store.set('ct-auto-session', session);
       CT.hideLobby();
       $('#auto').classList.remove('hidden');

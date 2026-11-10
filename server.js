@@ -11,6 +11,7 @@ const decks = require('./decks');
 const { createAccounts, createAccountsStore, createAccountAuth, canCreateDeck, canEditDeck, AccountError, INVITE_LINK } = require('./accounts');
 const { invitePage, inviteExpiredPage, adminPage } = require('./pages');
 const { sweepRooms } = require('./room-sweep');
+const { claimSeat, newSeatKey } = require('./seats');
 const { STARTER_DECKS } = require('./engine/decks');
 const autoplay = require('./autoplay');
 const { createAuth, loginPage, generatePassword } = require('./auth');
@@ -814,7 +815,7 @@ wss.on('connection', (ws, req) => {
       const code = String(msg.room || 'tavolo').trim().toLowerCase().slice(0, 20) || 'tavolo';
       const room = getRoom(code);
       // con gli account si rientra nel proprio posto anche da un link o da un altro dispositivo
-      let p = (msg.pid && room.players.get(msg.pid)) || (ws.user && [...room.players.values()].find((x) => x.userId === ws.user.id));
+      let p = claimSeat(room, msg, ws.user);
       if (!p) {
         if (room.players.size >= MAX_PLAYERS) {
           send(ws, { t: 'error', msg: `Il tavolo "${code}" è pieno (max ${MAX_PLAYERS} giocatori).` });
@@ -822,13 +823,14 @@ wss.on('connection', (ws, req) => {
         }
         p = newPlayer(room, String(msg.name || '').trim());
         p.userId = ws.user?.id;
+        p.key = newSeatKey();
         log(room, `${p.name} si siede al tavolo`, p.id);
       }
       p.connected = true;
       ws.room = room;
       ws.pid = p.id;
       room.sockets.add(ws);
-      send(ws, { t: 'joined', pid: p.id, room: code });
+      send(ws, { t: 'joined', pid: p.id, room: code, key: p.key });
       broadcast(room);
       return;
     }
