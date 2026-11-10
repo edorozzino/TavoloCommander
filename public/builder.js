@@ -74,6 +74,7 @@
     dirty = v;
     const el = $('#b-dirty');
     if (el) el.textContent = dirty ? '● modifiche non salvate' : deck?.id ? '✓ salvato' : '';
+    $('#b-app-save')?.classList.toggle('primary', dirty || !deck?.id); // evidenziato solo se c'è qualcosa da salvare
   }
 
   // Problemi del mazzo rispetto alle regole Commander
@@ -345,6 +346,8 @@
     renderDeckSelect();
     $('#b-name').textContent = deck.name;
     $('#b-play').classList.toggle('hidden', !CT.inGame());
+    $('#b-play-m').classList.toggle('hidden', !CT.inGame());
+    $('#b-app-name').textContent = deck.name;
     setDirty(dirty);
   }
 
@@ -473,6 +476,12 @@
   // ---------- Struttura ----------
   function buildShell() {
     $('#builder').innerHTML = `
+      <header class="b-app">
+        <button data-b="close" aria-label="Chiudi l'editor" title="Chiudi l'editor">‹</button>
+        <button data-b="pick" class="b-app-name" title="Apri un altro mazzo"><span id="b-app-name"></span> ▾</button>
+        <button data-b="save" id="b-app-save">Salva</button>
+        <button data-b="more" aria-label="Altre azioni" title="Altre azioni">⋯</button>
+      </header>
       <header class="b-top">
         <b class="b-title">Editor mazzi</b>
         <select id="b-select" title="Apri un mazzo salvato"></select>
@@ -492,7 +501,7 @@
         <button id="b-play" data-b="play" class="primary">Gioca con questo mazzo</button>
         <button data-b="close">Chiudi</button>
       </header>
-      <nav class="b-tabs"><button data-btab="deck">Mazzo <span id="b-tabcount"></span></button><button data-btab="search">Cerca carte</button></nav>
+      <nav class="b-tabs"><button data-btab="deck">Mazzo <span id="b-tabcount"></span></button><button data-btab="search">Cerca carte</button><button id="b-play-m" data-b="play" class="primary">▶ Gioca</button></nav>
       <aside id="b-info" class="b-info"></aside>
       <main class="b-center">
         <div class="b-head"><h2 id="b-name"></h2><span id="b-dirty" class="muted"></span>
@@ -579,15 +588,35 @@
         close(true);
       },
       close: () => close(false),
+      // Schermi stretti: le azioni secondarie stanno in un pannello, tutte visibili senza scorrere la barra
+      more() {
+        sheet('Altre azioni', [
+          ...(CT.inGame() ? [['', [['play', '▶ Gioca con questo mazzo']]]] : []),
+          ['Mazzo', [['new', 'Nuovo mazzo'], ['saveas', 'Salva con nome'], ['rename', 'Rinomina'], ['delete', 'Elimina', 'danger']]],
+          ['Importa ed esporta', [['import', 'Importa .txt'], ['starter', 'Mazzi iniziali'], ['export', 'Esporta .txt']]],
+          ['Strumenti', [['hand', 'Mano di prova'], ['clear', 'Svuota il mazzo', 'danger']]],
+        ], 'cols');
+      },
+      pick() {
+        const saved = decks.map((d) => [`deck:${d.id}`, `${d.name} — ${d.commanders.join(' + ') || 'senza comandante'} (${d.count})`, d.id === deck?.id ? 'on' : '']);
+        sheet('I tuoi mazzi', [['', [['new', '＋ Nuovo mazzo'], ...saved]]]);
+      },
     };
-    root.querySelectorAll('[data-b]').forEach((b) => (b.onclick = () => Promise.resolve().then(() => actions[b.dataset.b]()).catch((e) => toast(e.message))));
-
-    $('#b-select').onchange = async (e) => {
-      const id = e.target.value;
+    const run = (name) => Promise.resolve().then(() => (name.startsWith('deck:') ? switchDeck(name.slice(5)) : actions[name]())).catch((e) => toast(e.message));
+    async function switchDeck(id) {
       if (!id || id === deck?.id) return;
       if (!confirmDiscard()) { renderDeckSelect(); return; }
       await openDeck(id);
-    };
+    }
+    function sheet(title, groups, layout = '') {
+      CT.openModal(`<div class="sheet"><h2>${esc(title)}</h2>${groups.map(([label, items]) => `${label ? `<div class="sheet-group">${esc(label)}</div>` : ''}
+        <div class="sheet-items ${layout}">${items.map(([name, text, cls]) => `<button data-bsheet="${esc(name)}" class="${cls || ''}">${esc(text)}</button>`).join('')}</div>`).join('')}
+        <button data-close class="sheet-cancel">Annulla</button></div>`);
+      document.querySelectorAll('#modal [data-bsheet]').forEach((b) => (b.onclick = () => { CT.closeModal(); run(b.dataset.bsheet); }));
+    }
+    root.querySelectorAll('[data-b]').forEach((b) => (b.onclick = () => run(b.dataset.b)));
+
+    $('#b-select').onchange = (e) => switchDeck(e.target.value);
     $('#b-sort').onchange = renderDeck;
 
     for (const id of ['bs-text', 'bs-sub']) $('#' + id).oninput = searchSoon;

@@ -1060,3 +1060,28 @@ a.mm-item { color: inherit; text-decoration: none; }
   .builder[data-tab="deck"] .b-search, .builder[data-tab="search"] .b-center { display: none; }
   .b-search { height: auto; border-top: 0; }
 }
+
+/* Editor mazzi in formato app: in alto solo le azioni di sempre, il resto in un pannello, schede e Gioca in basso */
+.b-app { display: none; }
+.sheet h2 { margin: 0 0 6px; }
+.sheet-group { margin: 12px 0 4px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.sheet button { display: block; width: 100%; min-height: 46px; margin: 4px 0; text-align: left; font-size: 15px; white-space: normal; }
+.sheet-items.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; }
+@media (orientation: landscape) { .sheet-items.cols { grid-template-columns: repeat(4, 1fr); } }
+.sheet button.danger { color: var(--danger); }
+.sheet button.on { border-color: var(--accent); }
+.sheet .sheet-cancel { margin-top: 12px; text-align: center; }
+@media (max-width: 1100px) {
+  .b-top { display: none; }
+  .b-app { display: flex; grid-column: 1 / -1; align-items: center; gap: 6px; padding: 6px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .b-app button { min-height: 40px; min-width: 40px; }
+  .b-app .b-app-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-weight: 600; }
+  .modal-backdrop:has(.sheet) { place-items: end stretch; padding: 0; }
+  .modal:has(.sheet) { width: 100%; max-width: none; max-height: 82dvh; overflow-y: auto; border-radius: 14px 14px 0 0; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+}
+@media (max-width: 1100px) and (orientation: portrait), (max-width: 1100px) and (min-height: 521px) {
+  .builder { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .b-app { grid-row: 1; }
+  .b-center, .b-search { grid-row: 2; }
+  .b-tabs { grid-row: 3; border-bottom: 0; border-top: 1px solid var(--border); padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+}
