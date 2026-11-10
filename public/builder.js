@@ -370,6 +370,13 @@
     if (flip) flip.onclick = () => { showBack = !showBack; renderInfo(); };
   }
 
+  // Su schermi stretti mazzo e ricerca sono due schede, così non si scorre tutto il mazzo per arrivare alla ricerca
+  function setTab(tab) {
+    const root = $('#builder');
+    root.dataset.tab = tab;
+    root.querySelectorAll('[data-btab]').forEach((b) => b.classList.toggle('on', b.dataset.btab === tab));
+  }
+
   function show(name) {
     if (shown === name || !info[name]) return;
     shown = name;
@@ -416,6 +423,8 @@
 
     const n = total(deck.cards);
     const all = n + deck.commanders.length;
+    const tabCount = $('#b-tabcount');
+    if (tabCount) tabCount.textContent = `${all}/100`;
     const lands = deck.cards.filter((e) => category(e.name) === 'Terre').reduce((s, e) => s + e.count, 0);
     const creatures = deck.cards.filter((e) => category(e.name) === 'Creature').reduce((s, e) => s + e.count, 0);
     const ids = identity();
@@ -428,7 +437,7 @@
         <div class="b-curve" title="Curva di mana (carte non terra)">${curveHtml}</div>
       </div>
       <div class="b-zone cmd" data-bdrop="commanders">
-        <div class="b-zhead">Comandante <span class="muted">(${deck.commanders.length}/2) — trascina qui una creatura leggendaria</span></div>
+        <div class="b-zhead">Comandante <span class="muted">(${deck.commanders.length}/2)${CT.hover() ? ' — trascina qui una creatura leggendaria' : ' — tocca una creatura leggendaria e scegli “Imposta come comandante”'}</span></div>
         <div class="b-grid">${deck.commanders.map((c) => tileHtml('commanders', c, 1, pr.byName[c])).join('') || '<span class="muted b-empty">Nessun comandante</span>'}</div>
       </div>
       <div class="b-zone" data-bdrop="cards">
@@ -483,6 +492,7 @@
         <button id="b-play" data-b="play" class="primary">Gioca con questo mazzo</button>
         <button data-b="close">Chiudi</button>
       </header>
+      <nav class="b-tabs"><button data-btab="deck">Mazzo <span id="b-tabcount"></span></button><button data-btab="search">Cerca carte</button></nav>
       <aside id="b-info" class="b-info"></aside>
       <main class="b-center">
         <div class="b-head"><h2 id="b-name"></h2><span id="b-dirty" class="muted"></span>
@@ -513,9 +523,10 @@
           <div id="bs-status" class="muted"></div>
         </div>
         <div id="bs-results" class="bs-results"></div>
-        <div class="bs-hint muted">Doppio clic o “+” per aggiungere · trascina sul mazzo · trascina qui una carta del mazzo per toglierla</div>
+        <div class="bs-hint muted">${CT.hover() ? 'Doppio clic o “+” per aggiungere · trascina sul mazzo · trascina qui una carta del mazzo per toglierla' : '“+” aggiunge al mazzo · tocca una carta per le altre azioni'}</div>
       </aside>`;
     bindShell();
+    setTab('deck');
   }
 
   function bindShell() {
@@ -597,7 +608,16 @@
     // Pulsanti dei risultati e doppio clic
     root.addEventListener('click', (e) => {
       const b = e.target.closest('[data-badd]');
-      if (b) add(b.dataset.badd, b.closest('[data-bname]').dataset.bname);
+      if (b) return add(b.dataset.badd, b.closest('[data-bname]').dataset.bname);
+      const tab = e.target.closest('[data-btab]');
+      if (tab) return setTab(tab.dataset.btab);
+      // Senza mouse non c'è tasto destro né trascinamento: un tocco sulla carta apre le sue azioni
+      const card = e.target.closest('[data-bname]');
+      if (card && !CT.hover() && !e.target.closest('button')) {
+        // dopo questo clic, che altrimenti chiuderebbe subito il menu appena aperto
+        setTimeout(() => card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY })));
+      }
+      return undefined;
     });
     root.addEventListener('dblclick', (e) => {
       const el = e.target.closest('[data-bname]');
