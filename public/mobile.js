@@ -181,6 +181,9 @@
       wakePending = false;
     }
   }
+  // Safari su iPhone ignora il blocco dello zoom nella pagina: si fermano i suoi gesti a due dita
+  for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+
   const coarsePointer = () => matchMedia('(pointer: coarse)').matches;
   // Senza mouse non si può "passare sopra" una carta
   const previewHint = $('#preview .muted');
