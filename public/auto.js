@@ -323,7 +323,7 @@
         <b>Turno ${g.turn}</b><span class="muted">di ${esc(playerName(g.active))}</span>
         <div class="asteps">${stepTrack()}</div>
         <span class="astatus ${g.priority === M.me || myDecision() ? 'mine' : ''}">${status}</span>
-        <button class="primary ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'} title="Passa la priorità (Spazio)">Passa</button>
+        <button class="primary ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'} title="Passa la priorità (Spazio)">${passLabel()}</button>
         ${skipButton()}
         <button data-auto="arena" title="Torna alla vista Arena">Vista Arena</button>
         <button data-auto="leave">Esci</button>
@@ -478,7 +478,7 @@
         ${M.lesson ? `<div class="auto-lesson"><b>${esc(M.lesson.goal)}</b><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
         <div class="auto-prompt">${promptHtml()}</div>
         <div class="mg-actions">
-          <button class="primary mg-pass ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'}>Passa</button>
+          <button class="primary mg-pass ${myPriority() && g.stack.length ? 'urgent' : ''}" data-auto="pass" ${myPriority() ? '' : 'disabled'}>${passLabel()}</button>
           ${skipButton()}
           <button data-auto="log" title="Registro e Pila">📜</button>
           <button data-auto="classic" title="Vista classica">▦</button>
@@ -532,7 +532,7 @@
     const top = g.stack[g.stack.length - 1];
     if (top && myPriority()) {
       return top.controller === M.me
-        ? `<p><b>Hai lanciato ${esc(top.name)}.</b> Premi <b>Passa</b> per farla risolvere, oppure aggiungi un'altra magia o abilità.</p>`
+        ? `<p><b>Hai lanciato ${esc(top.name)}.</b> ${M.autoPass ? 'Si risolve da sola se nessuno risponde. Per rispondere tu stesso togli la spunta da Passa da solo.' : 'Premi <b>Risolvi</b> per farla risolvere, oppure aggiungi un\'altra magia o abilità.'}</p>`
         : `<p><b>${esc(playerName(top.controller))} ha lanciato ${esc(top.name)}.</b> Puoi rispondere con un istantaneo o un'abilità, oppure premi <b>Passa</b> per lasciarla risolvere.</p>`;
     }
     if (top && !g.decision) return `<p class="muted">In attesa che ${esc(playerName(g.priority))} risponda a ${esc(top.name)}…</p>`;
@@ -896,6 +896,15 @@
     }
     if (attack && pid !== M.me) { attack.defender = pid; render(); }
     return undefined;
+  }
+
+  // Come in MTG Arena il pulsante dice che cosa succede premendolo; nelle lezioni resta "Passa", come nelle istruzioni
+  function passLabel() {
+    const g = G();
+    if (M.lesson || !myPriority()) return 'Passa';
+    if (g.stack.length) return 'Risolvi';
+    if (g.active !== M.me) return 'Passa';
+    return { main1: 'Combattimento', main2: 'Fine turno' }[g.step] || 'Avanti';
   }
 
   function skipButton() {

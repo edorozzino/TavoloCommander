@@ -19,10 +19,14 @@ function nextPassMode(g, pid, player, canAct) {
 
 function shouldAutoPass(g, pid, player, canAct) {
   if (player.passMode) return true;
-  if (player.autoPass === false || inMyMain(g, pid)) return false;
+  if (player.autoPass === false) return false;
+  // La prima fase principale è sempre una fermata; la seconda solo se resta qualcosa da fare
+  if (inMyMain(g, pid)) return g.step === 'main2' && !canAct();
   if (!canAct()) return true;
-  // Si potrebbe agire: ci si ferma solo nei momenti in cui di solito si agisce davvero
-  return !(g.stack.length || attacksDeclared(g) || (g.active !== pid && g.step === 'end'));
+  // Si potrebbe agire: ci si ferma solo nei momenti in cui di solito si agisce davvero.
+  // Con una propria magia o abilità in cima alla Pila si passa, così si risolve senza un tocco in più.
+  const top = g.stack.at(-1);
+  return !((top && top.controller !== pid) || attacksDeclared(g) || (g.active !== pid && g.step === 'end'));
 }
 
 // Passare il turno vale anche come "non attacco"; le altre scelte restano sempre al giocatore

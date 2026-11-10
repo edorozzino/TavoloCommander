@@ -13,7 +13,8 @@ const auto = (g, pid, canAct, player = {}) => shouldAutoPass(g, pid, player, can
 test('senza mosse possibili passa da solo, tranne nelle proprie fasi principali', () => {
   assert.equal(auto(game(), 'A', no), true);
   assert.equal(auto(game({ step: 'main1' }), 'A', no), false);
-  assert.equal(auto(game({ step: 'main2' }), 'A', no), false);
+  assert.equal(auto(game({ step: 'main2' }), 'A', no), true);
+  assert.equal(auto(game({ step: 'main2' }), 'A', yes), false);
   assert.equal(auto(game({ step: 'main1' }), 'B', no), true);
 });
 
@@ -26,7 +27,13 @@ test('con un istantaneo disponibile non ci si ferma nei passi senza interesse', 
 
 test('con un istantaneo disponibile ci si ferma se c\'è qualcosa in Pila', () => {
   assert.equal(auto(game({ step: 'main1', stack: [spell('A')] }), 'B', yes), false);
-  assert.equal(auto(game({ step: 'upkeep', stack: [spell('B')] }), 'B', yes), false);
+  assert.equal(auto(game({ step: 'upkeep', stack: [spell('B'), spell('A')] }), 'B', yes), false);
+});
+
+test('con una propria magia in cima alla Pila si passa, così si risolve da sola', () => {
+  assert.equal(auto(game({ step: 'main1', stack: [spell('A')] }), 'A', yes), true);
+  assert.equal(auto(game({ step: 'main1', stack: [spell('A'), spell('B')] }), 'B', yes), true);
+  assert.equal(auto(game({ step: 'main1', stack: [spell('A')] }), 'A', yes, { autoPass: false }), false);
 });
 
 test('con un istantaneo disponibile ci si ferma se ci sono attaccanti e alla fine del turno altrui', () => {

@@ -14,6 +14,7 @@ const alive = (g, id) => g.object(id)?.zone === 'battlefield';
 test('una creatura entrata in questo turno non può attaccare (CR 302.6)', () => {
   const g = commanderGame();
   const bears = on(g, 'A', 'Grizzly Bears', { sick: true });
+  on(g, 'A', 'Serra Angel'); // un'altra creatura può attaccare, quindi la dichiarazione viene chiesta
   advanceTo(g, 'declareAttackers');
   assert.throws(() => g.perform('A', { type: 'declareAttackers', attackers: [{ object: bears, defender: 'B' }] }), (e) => e.code === 'SUMMONING_SICK');
 });
@@ -47,6 +48,7 @@ test('attaccare tappa la creatura (CR 508.1f), ma non con Cautela (CR 702.20)', 
 test('una creatura con Difensore non può attaccare (CR 702.3b)', () => {
   const g = commanderGame();
   const wall = on(g, 'A', 'Wall of Wood');
+  on(g, 'A', 'Serra Angel'); // un'altra creatura può attaccare, quindi la dichiarazione viene chiesta
   advanceTo(g, 'declareAttackers');
   assert.throws(() => g.perform('A', { type: 'declareAttackers', attackers: [{ object: wall, defender: 'B' }] }), (e) => e.code === 'CANT_ATTACK');
 });
@@ -201,4 +203,13 @@ test('il danno sulle creature si rimuove nella sottofase di cancellazione (CR 51
   assert.equal(g.object(spider).damage, 2);
   advanceTo(g, 'upkeep', 2);
   assert.equal(g.object(spider).damage, 0);
+});
+
+test('senza creature in grado di attaccare non viene chiesta la dichiarazione', () => {
+  const g = commanderGame();
+  advanceTo(g, 'main1');
+  g.object(g.setup.putOnBattlefield(g.active, 'Grizzly Bears')).tapped = true;
+  while (g.step === 'main1' || g.step === 'beginCombat') g.perform(g.priority, { type: 'pass' });
+  assert.equal(g.decision, null);
+  assert.notEqual(g.step, 'declareBlockers');
 });

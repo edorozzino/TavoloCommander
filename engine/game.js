@@ -563,7 +563,7 @@ class Game {
     if (step === 'draw' && !(this.seats.length === 2 && this.turn === 1)) this.draw(this.active); // CR 103.8
     if (step === 'declareAttackers') {
       this.combat = { attackers: new Map(), dealtFirst: new Set() };
-      if (this.battlefield().some((o) => o.controller === this.active && isCreature(o))) {
+      if (this.battlefield().some((o) => !this.attackProblem(o))) { // senza creature in grado di attaccare non si chiede nulla
         this.ask({ type: 'declareAttackers', player: this.active }); // CR 508.1
         return;
       }
