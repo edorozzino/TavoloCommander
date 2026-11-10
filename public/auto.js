@@ -360,7 +360,7 @@
           ${M.lesson.done && M.lesson.next ? `<button class="primary" data-lesson="${M.lesson.next}">Lezione successiva</button>` : ''}
           ${M.lesson.failed ? `<button class="primary" data-lesson="${M.lesson.id}">Riprova</button>` : ''}
           <button data-auto="leave">Torna all'Accademia</button></div></div></div>` : ''}
-      ${g.winner && !M.lesson ? `<div class="auto-over"><div><h2>${esc(playerName(g.winner))} vince la partita!</h2><button class="primary" data-auto="leave">Torna al menu</button></div></div>` : ''}`;
+      ${g.winner && !M.lesson ? `<div class="auto-over"><div><h2>${esc(playerName(g.winner))} vince la partita!</h2><div class="row"><button class="primary" data-auto="rematch">Rivincita</button><button data-auto="leave">Torna al menu</button></div></div></div>` : ''}`;
   }
 
   // ---------- Schermata compatta per i telefoni ----------
@@ -845,6 +845,7 @@
       case 'menu': lessonList = null; $('#auto').classList.add('hidden'); CT.showLobby(); return undefined;
       case 'pass': if (myPriority()) act({ type: 'pass' }); return undefined;
       case 'skip': return skipMenu();
+      case 'rematch': return send({ t: 'autoRematch' });
       case 'cancel': flow = null; return render();
       case 'manual': manualMode = !manualMode; return render();
       case 'manual-done': return act({ type: 'manual', op: 'done' });

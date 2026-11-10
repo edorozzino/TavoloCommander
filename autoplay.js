@@ -250,7 +250,16 @@ function broadcast(room) {
 }
 
 async function start(room) {
-  const ready = room.order.filter((pid) => room.players.get(pid).deckId);
+  // Chi è al tavolo senza mazzo: se è collegato si aspetta lui, se è sparito gli si toglie il posto
+  const missing = room.order.filter((pid) => !room.players.get(pid).deckId);
+  const waiting = missing.filter((pid) => room.players.get(pid).connected);
+  if (waiting.length) throw new RuleError('NOT_READY', `Deve ancora scegliere un mazzo: ${waiting.map((pid) => nameOf(room, pid)).join(', ')}`);
+  for (const pid of missing) {
+    log(room, `${nameOf(room, pid)} non è collegato e non ha scelto un mazzo: lascia il posto`);
+    room.players.delete(pid);
+    room.order = room.order.filter((x) => x !== pid);
+  }
+  const ready = room.order;
   if (ready.length < 2) throw new RuleError('NOT_READY', 'Servono almeno 2 giocatori con un mazzo scelto');
   const seats = ready.map((pid) => {
     const d = deckContents(room.players.get(pid).deckId);
@@ -380,6 +389,20 @@ async function handle(ws, msg) {
       } finally {
         room.starting = false;
       }
+    } else if (msg.t === 'autoRematch' && room.game?.winner && !room.lesson) {
+      // Si torna in sala d'attesa con gli stessi posti e gli stessi mazzi; chi era uscito non c'è più
+      clearTimeout(room.botTimer);
+      room.botTimer = null;
+      room.game = null;
+      for (const x of [...room.players.values()]) {
+        Object.assign(x, { passMode: null, away: false });
+        if (!x.left) continue;
+        room.players.delete(x.id);
+        room.order = room.order.filter((pid) => pid !== x.id);
+      }
+      const host = room.players.get(room.host);
+      if (!host || host.isBot || !host.connected) room.host = p.id;
+      log(room, `${p.name} propone la rivincita`);
     } else if (msg.t === 'autoTimer' && !room.game) {
       if (ws.pid !== room.host) throw new RuleError('NOT_HOST', 'Solo chi ha creato il tavolo può cambiare il tempo per mossa');
       room.moveLimit = MOVE_LIMITS.includes(msg.seconds) ? msg.seconds : 0;
@@ -537,4 +560,9 @@ function closeTable(code) {
   return Boolean(room);
 }
 
-module.exports = { handle, disconnect, listTables, closeTable, sweep: () => sweepRooms(rooms, closeRoom), isAutoMessage: (msg) => /^(auto|lesson)/.test(String(msg.t || '')) };
+// Solo per i test: chiude la partita di un tavolo con un vincitore
+function endGameForTest(code, winner) {
+  rooms.get(code).game.winner = winner;
+}
+
+module.exports = { handle, disconnect, endGameForTest, listTables, closeTable, sweep: () => sweepRooms(rooms, closeRoom), isAutoMessage: (msg) => /^(auto|lesson)/.test(String(msg.t || '')) };

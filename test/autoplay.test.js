@@ -226,3 +226,38 @@ test('il posto di un giocatore computer non si può occupare', async () => {
   await autoplay.handle(thief, { t: 'autoJoin', room: 'posto-bot', pid: bot, name: 'Ladro' });
   assert.notEqual(thief.last('autoJoined').pid, bot);
 });
+
+test('la partita non parte finché un giocatore collegato non ha scelto il mazzo', async () => {
+  const { a } = await table('senza-mazzo');
+  const c = fakeSocket();
+  await autoplay.handle(c, { t: 'autoJoin', room: 'senza-mazzo', name: 'Carla' });
+  await autoplay.handle(a, { t: 'autoStart' });
+  assert.match(a.last('error').msg, /Carla/);
+  assert.equal(a.last('autoState').game, undefined);
+});
+
+test('chi è scollegato e senza mazzo perde il posto all\'avvio', async () => {
+  const { a } = await table('senza-mazzo-via');
+  const c = fakeSocket();
+  await autoplay.handle(c, { t: 'autoJoin', room: 'senza-mazzo-via', name: 'Carla' });
+  c.pid = c.last('autoJoined').pid;
+  autoplay.disconnect(c);
+  await autoplay.handle(a, { t: 'autoStart' });
+  assert.equal(a.last('autoState').game.players.length, 2);
+  assert.equal(a.last('autoState').lobby.players.length, 2);
+});
+
+test('dopo la fine si torna in sala con gli stessi mazzi per la rivincita', async () => {
+  const { a, b } = await table('rivincita');
+  await autoplay.handle(a, { t: 'autoRematch' }); // senza partita finita non succede nulla
+  await autoplay.handle(a, { t: 'autoStart' });
+  await autoplay.handle(b, { t: 'autoRematch' });
+  assert.ok(a.last('autoState').game, 'a partita in corso la rivincita è ignorata');
+  autoplay.endGameForTest('rivincita', a.last('autoJoined').pid);
+  await autoplay.handle(b, { t: 'autoRematch' });
+  const lobby = a.last('autoState').lobby;
+  assert.equal(a.last('autoState').game, undefined);
+  assert.deepEqual(lobby.players.map((p) => p.deckName != null), [true, true]);
+  await autoplay.handle(a, { t: 'autoStart' });
+  assert.ok(a.last('autoState').game);
+});
