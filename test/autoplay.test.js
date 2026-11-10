@@ -19,7 +19,7 @@ async function table(room) {
 
 // Tutti i giocatori umani tengono la mano; i computer rispondono da soli dopo una breve pausa
 async function keepHands(...sockets) {
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 300; i++) { // il computer può fare più mulligan, ognuno con le sue pause
     const views = sockets.map((s) => s.last('autoState').game);
     if (views[0].step !== 'mulligan') return;
     const turn = sockets.find((s, j) => views[j].decision?.player === views[j].me);
@@ -156,4 +156,43 @@ test('Passa il turno arriva da solo fino al turno successivo e poi si spegne', a
   for (let i = 0; i < 200 && active.last('autoState').game.turn === start.turn; i++) await new Promise((r) => setTimeout(r, 100));
   assert.equal(active.last('autoState').game.turn, start.turn + 1);
   assert.equal(active.last('autoState').passMode, null);
+});
+
+test('un doppio tocco su Avvia fa partire una sola partita', async () => {
+  const { a } = await table('doppio-avvio');
+  await Promise.all([autoplay.handle(a, { t: 'autoStart' }), autoplay.handle(a, { t: 'autoStart' })]);
+  assert.equal(a.last('autoState').log.filter((l) => l.text.startsWith('La partita comincia')).length, 1);
+});
+
+test('se chi ha creato il tavolo si scollega in sala, il tavolo passa a un altro', async () => {
+  const { a, b } = await table('erede');
+  a.pid = a.last('autoJoined').pid;
+  autoplay.disconnect(a);
+  assert.equal(b.last('autoState').lobby.host, b.last('autoJoined').pid);
+  await autoplay.handle(b, { t: 'autoStart' });
+  assert.ok(b.last('autoState').game);
+});
+
+test('chi lascia a partita in corso viene sostituito dal computer e può rientrare', async () => {
+  const { a, b } = await table('abbandono');
+  await autoplay.handle(a, { t: 'autoStart' });
+  const seat = b.last('autoJoined').pid;
+  await autoplay.handle(b, { t: 'autoLeave' });
+  const left = () => a.last('autoState').lobby.players.find((p) => p.id === seat);
+  assert.equal(left().bot, true);
+  await keepHands(a); // il computer risponde al mulligan al posto di chi è uscito
+  assert.notEqual(a.last('autoState').game.step, 'mulligan');
+  const back = fakeSocket();
+  await autoplay.handle(back, { t: 'autoJoin', room: 'abbandono', pid: seat });
+  assert.equal(left().bot, false);
+});
+
+test('il tempo per mossa lo sceglie solo chi ha creato il tavolo', async () => {
+  const { a, b } = await table('tempo');
+  await autoplay.handle(b, { t: 'autoTimer', seconds: 60 });
+  assert.equal(a.last('autoState').lobby.moveLimit, 0);
+  await autoplay.handle(a, { t: 'autoTimer', seconds: 60 });
+  assert.equal(a.last('autoState').lobby.moveLimit, 60);
+  await autoplay.handle(a, { t: 'autoTimer', seconds: 7 });
+  assert.equal(a.last('autoState').lobby.moveLimit, 0);
 });

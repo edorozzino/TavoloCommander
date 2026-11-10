@@ -77,6 +77,7 @@
       const wasMyDecision = myDecision();
       const prev = G();
       M = msg;
+      timerUntil = msg.timer ? Date.now() + msg.timer.left : 0;
       if (msg.game) CT.noteArtists(msg.game);
       if (!myDecision() || (wasMyDecision && wasMyDecision.type !== myDecision()?.type)) resetDecisionUi();
       if (M.lesson?.done && !doneLessons().includes(M.lesson.id)) CT.store.set('ct-academy-done', [...doneLessons(), M.lesson.id]);
@@ -223,6 +224,8 @@
       ${isHost && L.players.length < 4 ? `<div class="row"><select data-auto="bot-deck"><option value="">Mazzo del computer: a sorpresa</option>
         ${(M.decks || []).filter((d) => d.id.startsWith('starter-')).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select>
         <button data-auto="add-bot">🤖 Aggiungi giocatore computer</button></div>` : ''}
+      ${isHost ? `<label>Tempo per mossa <select data-auto="move-limit">${[[0, 'Nessun limite'], [60, '1 minuto'], [120, '2 minuti']].map(([v, t]) => `<option value="${v}" ${L.moveLimit === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`
+        : (L.moveLimit ? `<p class="muted">Tempo per mossa: ${L.moveLimit / 60} min, poi decide il computer.</p>` : '')}
       <label>Il tuo mazzo <select data-auto="deck"><option value="">— scegli —</option>${deckOptions}</select></label>
       <div class="row">
         ${isHost ? '<button class="primary" data-auto="start">Avvia la partita</button>' : '<span class="muted">La partita la avvia chi ha creato il tavolo (★).</span>'}
@@ -316,9 +319,9 @@
     const mine = me();
     const i = g.players.findIndex((p) => p.id === M.me);
     const others = [...g.players.slice(i + 1), ...g.players.slice(0, i)];
-    const status = g.winner ? `${esc(playerName(g.winner))} vince la partita!`
+    const status = (g.winner ? `${esc(playerName(g.winner))} vince la partita!`
       : g.decision ? `${g.decision.player === M.me ? 'Tocca a te' : `In attesa di ${esc(playerName(g.decision.player))}`}: ${decisionLabel(g.decision)}`
-        : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`;
+        : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`) + timerHtml();
     return `<header class="auto-top">
         <b>Turno ${g.turn}</b><span class="muted">di ${esc(playerName(g.active))}</span>
         <div class="asteps">${stepTrack()}</div>
@@ -443,9 +446,9 @@
     const opp = others.find((p) => p.id === focusId);
     if (raised && !(mine.hand || []).some((o) => o.id === raised)) raised = null;
     const step = STEPS.find(([id]) => g.step === id || (id === 'combatDamage' && g.step === 'firstStrikeDamage'))?.[1] || '';
-    const status = g.winner ? `${esc(playerName(g.winner))} vince!`
+    const status = (g.winner ? `${esc(playerName(g.winner))} vince!`
       : g.decision ? (g.decision.player === M.me ? `Tocca a te: ${decisionLabel(g.decision)}` : `Attendi ${esc(playerName(g.decision.player))}`)
-        : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`;
+        : g.priority === M.me ? 'Hai la priorità' : `Priorità a ${esc(playerName(g.priority))}`) + timerHtml();
     const pool = Object.entries(mine.pool).filter(([, n]) => n).map(([c, n]) => `${mana(`{${c}}`)}${n}`).join(' ');
     const hand = mine.hand || [];
     const top = g.stack[g.stack.length - 1];
@@ -838,7 +841,7 @@
     switch (name) {
       case 'start': return send({ t: 'autoStart' });
       case 'add-bot': return send({ t: 'autoAddBot', deckId: $('[data-auto="bot-deck"]')?.value || undefined });
-      case 'leave': if (!G() || G().winner || M.lesson || confirm('Lasciare il tavolo?')) send({ t: 'autoLeave' }); return undefined;
+      case 'leave': if (!G() || G().winner || M.lesson || confirm('Lasciare il tavolo? Il computer giocherà al tuo posto; puoi rientrare quando vuoi.')) send({ t: 'autoLeave' }); return undefined;
       case 'menu': lessonList = null; $('#auto').classList.add('hidden'); CT.showLobby(); return undefined;
       case 'pass': if (myPriority()) act({ type: 'pass' }); return undefined;
       case 'skip': return skipMenu();
@@ -922,6 +925,15 @@
       ['Passa il turno', () => setMode('turn')],
     ]);
   }
+
+  // Conto alla rovescia per chi deve muovere (tempo per mossa, o giocatore scollegato)
+  let timerUntil = 0;
+  const timerText = () => {
+    const s = Math.max(0, Math.ceil((timerUntil - Date.now()) / 1000));
+    return `⏳ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  const timerHtml = () => (M.timer && !G()?.winner ? ` <span class="atimer">${timerText()}</span>` : '');
+  setInterval(() => { for (const el of document.querySelectorAll('.atimer')) el.textContent = timerText(); }, 1000);
 
   const tapWord = () => (CT.hover() ? 'Clicca' : 'Tocca');
   const decisionLabel = (d) => (d.type === 'putBack' && d.bottom ? 'mettere carte in fondo' : DECISION_NAMES[d.type] || 'decidere');
@@ -1024,6 +1036,7 @@
   document.addEventListener('change', (e) => {
     if (e.target.dataset?.auto === 'deck' && e.target.value) send({ t: 'autoDeck', deckId: e.target.value });
     if (e.target.matches?.('[data-autopass]')) send({ t: 'autoPass', on: e.target.checked });
+    if (e.target.dataset?.auto === 'move-limit') send({ t: 'autoTimer', seconds: Number(e.target.value) });
   });
 
   document.addEventListener('keydown', (e) => {

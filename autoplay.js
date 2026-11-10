@@ -21,6 +21,10 @@ const MAX_PLAYERS = 4;
 const AUTO_PASS_DELAY = 600;
 const BOT_PASS_DELAY = 300;
 const BOT_ACTION_DELAY = 1400;
+// Chi deve muovere ma è scollegato non blocca il tavolo: dopo l'attesa il computer decide per lui
+const AWAY_LIMIT = 45 * 1000;
+const AWAY_REPEAT_LIMIT = 3 * 1000;
+const MOVE_LIMITS = [0, 60, 120]; // secondi per mossa scelti da chi crea il tavolo (0 = nessun limite)
 
 const STEP_NAMES = {
   untap: 'stap', upkeep: 'mantenimento', draw: 'acquisizione', main1: 'prima fase principale', beginCombat: 'inizio combattimento',
@@ -94,7 +98,7 @@ function deckContents(deckId) {
 }
 
 function getRoom(code) {
-  if (!rooms.has(code)) rooms.set(code, { code, players: new Map(), order: [], host: null, game: null, log: [], sockets: new Set(), seen: 0, images: {}, arts: {}, artists: {} });
+  if (!rooms.has(code)) rooms.set(code, { code, players: new Map(), order: [], host: null, game: null, log: [], sockets: new Set(), seen: 0, moveLimit: 0, images: {}, arts: {}, artists: {} });
   return rooms.get(code);
 }
 
@@ -182,18 +186,57 @@ function send(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
 }
 
+// Tempo massimo per la mossa di un giocatore umano in questo momento, in millisecondi (0 = nessuno)
+function moveLimitFor(room, p) {
+  if (!p || p.isBot || room.lesson) return 0;
+  if (!p.connected) return p.away ? AWAY_REPEAT_LIMIT : AWAY_LIMIT;
+  return room.moveLimit * 1000;
+}
+
+function armIdleTimer(room) {
+  const g = room.game;
+  const who = g && !g.winner ? (g.decision ? g.decision.player : g.priority) : null;
+  const p = who && room.players.get(who);
+  const limit = moveLimitFor(room, p);
+  const key = limit ? [who, limit, g.turn, g.step, g.stack.length, g.passes, g.events.length, g.decision?.type].join(':') : null;
+  if (key === room.idleKey) return;
+  clearTimeout(room.idleTimer);
+  room.idleKey = key;
+  room.idle = null;
+  if (!key) return;
+  room.idle = { player: who, until: Date.now() + limit };
+  room.idleTimer = setTimeout(() => {
+    room.idleKey = null;
+    room.idle = null;
+    if (!rooms.has(room.code) || room.game !== g || g.winner || (g.decision ? g.decision.player : g.priority) !== who) return;
+    if (!p.connected) p.away = true;
+    try {
+      g.perform(who, g.decision ? botMove(g, who) : { type: 'pass' });
+      log(room, `⏳ Tempo scaduto per ${p.name}: ${g.decision ? 'decide' : 'passa'} il computer`);
+    } catch (e) {
+      if (!(e instanceof RuleError)) console.error(e);
+    }
+    narrate(room);
+    if (g.winner) log(room, `${nameOf(room, g.winner)} vince la partita!`);
+    broadcast(room);
+    scheduleBots(room);
+  }, limit);
+}
+
 function broadcast(room) {
+  armIdleTimer(room);
   const names = Object.fromEntries([...room.players.values()].map((p) => [p.id, p.name]));
   const lobby = {
     host: room.host,
     started: !!room.game,
+    moveLimit: room.moveLimit,
     players: room.order.map((pid) => {
       const p = room.players.get(pid);
       return { id: pid, name: p.name, deck: p.deckId, deckName: p.deckName, connected: p.connected, bot: !!p.isBot };
     }),
   };
   for (const ws of room.sockets) {
-    const msg = { t: 'autoState', room: room.code, me: ws.pid, lobby, log: room.log.slice(-120), autoPass: !room.lesson && room.players.get(ws.pid)?.autoPass !== false, passMode: room.players.get(ws.pid)?.passMode || null };
+    const msg = { t: 'autoState', room: room.code, me: ws.pid, lobby, log: room.log.slice(-120), autoPass: !room.lesson && room.players.get(ws.pid)?.autoPass !== false, passMode: room.players.get(ws.pid)?.passMode || null, timer: room.idle ? { player: room.idle.player, left: room.idle.until - Date.now() } : null };
     if (room.lesson) msg.lesson = lessons.lessonStatus(room.lesson);
     if (room.game) {
       msg.game = buildView(room.game, ws.pid, { names, images: room.images, arts: room.arts, artists: room.artists });
@@ -280,12 +323,19 @@ async function handle(ws, msg) {
       log(room, `${p.name} si siede al tavolo`);
     }
     p.connected = true;
+    p.away = false;
+    if (p.left) { // era uscito a partita in corso: riprende il posto dal computer
+      p.left = false;
+      p.isBot = false;
+      log(room, `${p.name} torna al tavolo`);
+    }
     ws.autoRoom = room;
     ws.pid = p.id;
     room.sockets.add(ws);
     send(ws, { t: 'autoJoined', pid: p.id, room: code });
     if (!room.game) prefetchDecks().then(() => broadcast(room), () => {}); // percentuali dei mazzi aggiornate
-    return broadcast(room);
+    broadcast(room);
+    return scheduleBots(room);
   }
   const room = ws.autoRoom;
   const p = room && room.players.get(ws.pid);
@@ -321,7 +371,16 @@ async function handle(ws, msg) {
       p.passTurn = room.game.turn;
     } else if (msg.t === 'autoStart' && !room.game) {
       if (ws.pid !== room.host) throw new RuleError('NOT_HOST', 'Solo chi ha creato il tavolo può avviare la partita');
-      await start(room);
+      if (room.starting) return; // un secondo tocco mentre la partita si prepara
+      room.starting = true;
+      try {
+        await start(room);
+      } finally {
+        room.starting = false;
+      }
+    } else if (msg.t === 'autoTimer' && !room.game) {
+      if (ws.pid !== room.host) throw new RuleError('NOT_HOST', 'Solo chi ha creato il tavolo può cambiare il tempo per mossa');
+      room.moveLimit = MOVE_LIMITS.includes(msg.seconds) ? msg.seconds : 0;
     } else if (msg.t === 'autoAct' && room.game) {
       const text = describeAction(room, ws.pid, msg.action || {});
       if (room.lesson) lessons.lessonAct(room.lesson, msg.action || {});
@@ -333,6 +392,12 @@ async function handle(ws, msg) {
       room.sockets.delete(ws);
       ws.autoRoom = null;
       if (room.lesson) rooms.delete(room.code);
+      if (room.game && !room.game.winner && !room.lesson) { // a partita in corso il posto passa al computer, così nessuno resta bloccato
+        p.left = true;
+        p.isBot = true;
+        log(room, `${p.name} lascia il tavolo: al suo posto gioca il computer`);
+        if (![...room.players.values()].some((x) => !x.isBot)) closeRoom(room); // non resta nessuna persona
+      }
       if (!room.game) {
         room.players.delete(p.id);
         room.order = room.order.filter((x) => x !== p.id);
@@ -381,7 +446,9 @@ function refreshPassModes(room) {
 
 // I giocatori computer muovono uno alla volta, con una breve pausa perché si veda che cosa fanno
 function scheduleBots(room) {
+  armIdleTimer(room);
   if (room.botTimer || !room.game || room.game.winner) return;
+  if (!room.sockets.size) return; // nessuno guarda: la partita aspetta, riprende quando qualcuno rientra
   const g = room.game;
   refreshPassModes(room);
   const who = g.decision ? g.decision.player : g.priority;
@@ -430,12 +497,21 @@ function disconnect(ws) {
   const p = room.players.get(ws.pid);
   if (p && ![...room.sockets].some((s) => s.pid === p.id)) {
     p.connected = false;
+    if (!room.game && room.host === p.id) { // in sala d'attesa il tavolo passa a chi è ancora collegato
+      const heir = room.order.find((pid) => !room.players.get(pid).isBot && room.players.get(pid).connected);
+      if (heir) {
+        room.host = heir;
+        log(room, `${p.name} si è scollegato: ora il tavolo lo gestisce ${nameOf(room, heir)}`);
+      }
+    }
     broadcast(room);
+    scheduleBots(room);
   }
 }
 
 function closeRoom(room) {
   clearTimeout(room.botTimer);
+  clearTimeout(room.idleTimer);
   rooms.delete(room.code);
   for (const ws of room.sockets) {
     ws.autoRoom = null;
