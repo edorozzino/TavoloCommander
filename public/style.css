@@ -1019,3 +1019,30 @@ a.mm-item { color: inherit; text-decoration: none; }
 
 /* La mano ha un suo livello sotto il pannello: Safari altrimenti può lasciare le carte animate sopra le istruzioni */
 .mg-hand { position: relative; z-index: 1; }
+
+/* Schermi touch: pulsanti e tendine abbastanza alti per il dito */
+@media (pointer: coarse) {
+  button, select { min-height: 40px; }
+  button.small { min-height: 32px; min-width: 40px; }
+  .topbar button, .auto-top button, .b-top button, .b-top select { min-height: 36px; }
+}
+
+/* L'invito a ruotare resta sotto le finestre aperte e non copre i nomi degli avversari */
+.rotate-hint { z-index: 1400; }
+@media (max-width: 600px) {
+  .rotate-hint { padding: 6px 10px; gap: 8px; }
+  .compact .rotate-hint { top: calc(84px + env(safe-area-inset-top)); }
+  .rh-icon { font-size: 20px; }
+  .rh-text { font-size: 12px; }
+}
+
+/* Tablet in verticale: carte più grandi e colonna laterale più larga, invece di tanto spazio vuoto */
+@media (min-width: 601px) and (max-width: 999px) and (orientation: portrait) {
+  .mg, .compact .game { --rowh: clamp(70px, 14vh, 160px); --landh: clamp(44px, 8vh, 90px); --hw: clamp(90px, 16vw, 150px); }
+  .mg { --side: 230px; }
+  .compact .game { grid-template-columns: minmax(0, 1fr) 230px; }
+}
+
+/* Costruttore: i filtri vanno a capo invece di uscire dalla colonna */
+.bs-line { flex-wrap: wrap; }
+.bs-line > select { min-width: 110px; }

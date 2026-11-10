@@ -338,7 +338,7 @@
           <div class="auto-hand">${(mine.hand || []).map((o) => cardHtml(o, 'hand', keys)).join('') || '<span class="muted">Mano vuota</span>'}</div>
         </div>
         <aside class="auto-side">
-          <div id="auto-preview" class="auto-preview"><span class="muted">Passa sopra una carta per vederla</span></div>
+          <div id="auto-preview" class="auto-preview"><span class="muted">${CT.hover() ? 'Passa sopra' : 'Tieni premuta'} una carta per vederla</span></div>
           ${M.lesson ? `<div class="auto-lesson"><b>Lezione ${M.lesson.n}: ${esc(M.lesson.title)}</b>
             <div class="muted">${esc(M.lesson.goal)}</div><div class="lesson-hint">💡 ${esc(M.lesson.hint)}</div></div>` : ''}
           <div class="auto-prompt">${promptHtml()}</div>

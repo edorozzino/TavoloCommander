@@ -182,6 +182,9 @@
     }
   }
   const coarsePointer = () => matchMedia('(pointer: coarse)').matches;
+  // Senza mouse non si può "passare sopra" una carta
+  const previewHint = $('#preview .muted');
+  if (previewHint && matchMedia('(hover: none)').matches) previewHint.textContent = 'Tieni premuta una carta per ingrandirla';
   document.addEventListener('visibilitychange', update);
   document.addEventListener('pointerdown', () => { wakeFailedAt = 0; syncWakeLock(); }, { passive: true });
 
