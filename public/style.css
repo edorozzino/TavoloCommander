@@ -718,7 +718,7 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
   --side: clamp(150px, 21vw, 230px);
   --rowh: clamp(40px, 21vh, 110px);  /* altezza delle carte che non sono terre */
   --landh: clamp(28px, 11.5vh, 64px);  /* altezza delle terre */
-  --hw: clamp(54px, 17vh, 120px);    /* larghezza delle carte in mano */
+  --hw: clamp(54px, 18.4vh, 130px);    /* larghezza delle carte in mano */
   flex: 1; min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--side);
@@ -829,7 +829,7 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
 /* Telefono in verticale: tutto in colonna, scelte e "Passa" in basso */
 @media (max-width: 600px) {
   .mg {
-    --rowh: clamp(40px, min(22vw, 12vh), 100px); --landh: clamp(28px, min(12vw, 7vh), 56px); --hw: clamp(54px, 19vw, 100px);
+    --rowh: clamp(40px, min(22vw, 12vh), 100px); --landh: clamp(28px, min(12vw, 7vh), 56px); --hw: clamp(54px, 20.5vw, 108px);
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) calc(var(--hw) * .8) auto;
     grid-template-areas: "tabs" "opp" "mid" "me" "hand" "side";
@@ -842,7 +842,7 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
 
 /* Tavolo LAN nella schermata compatta: stesse carte piccole, mano a ventaglio e un avversario alla volta */
 .compact .game {
-  --rowh: clamp(40px, 19vh, 100px); --landh: clamp(28px, 10.5vh, 60px); --hw: clamp(54px, 16vh, 110px);
+  --rowh: clamp(40px, 19vh, 100px); --landh: clamp(28px, 10.5vh, 60px); --hw: clamp(54px, 17.3vh, 119px);
   grid-template-columns: minmax(0, 1fr) clamp(150px, 20vw, 230px);
   grid-template-rows: auto minmax(0, 1fr); height: 100%;
 }
@@ -877,7 +877,7 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
 .compact .sidebar { min-width: 0; }
 .compact .preview { display: grid; margin: 6px; max-height: 48%; flex: 0 1 auto; aspect-ratio: 63 / 88; align-self: center; }
 @media (max-width: 600px) {
-  .compact .game { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; --rowh: clamp(40px, min(22vw, 11vh), 96px); --landh: clamp(28px, min(12vw, 6.5vh), 56px); --hw: clamp(54px, 19vw, 100px); }
+  .compact .game { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; --rowh: clamp(40px, min(22vw, 11vh), 96px); --landh: clamp(28px, min(12vw, 6.5vh), 56px); --hw: clamp(54px, 20.5vw, 108px); }
 
   .compact .sidebar { height: 22vh; }
   .compact .preview { display: none; }
@@ -900,7 +900,7 @@ button.primary { background: linear-gradient(180deg, #d8b45c, #b48d36); color: #
   .mc:hover { outline: 2px solid var(--accent); outline-offset: -1px; }
 }
 @media (min-width: 1000px) and (min-height: 650px) {
-  .mg, .compact .game { --rowh: clamp(70px, 16vh, 150px); --landh: clamp(44px, 9vh, 90px); --hw: clamp(90px, 15vh, 170px); }
+  .mg, .compact .game { --rowh: clamp(70px, 16vh, 150px); --landh: clamp(44px, 9vh, 90px); --hw: clamp(90px, 16.2vh, 184px); }
   .mg { --side: clamp(240px, 20vw, 340px); }
   .compact .game { grid-template-columns: minmax(0, 1fr) clamp(240px, 20vw, 340px); }
   .mc-name { height: 17px; line-height: 17px; font-size: 11.5px; padding: 0 5px; }
@@ -1041,7 +1041,7 @@ a.mm-item { color: inherit; text-decoration: none; }
 
 /* Tablet in verticale: carte più grandi e colonna laterale più larga, invece di tanto spazio vuoto */
 @media (min-width: 601px) and (max-width: 999px) and (orientation: portrait) {
-  .mg, .compact .game { --rowh: clamp(70px, 14vh, 160px); --landh: clamp(44px, 8vh, 90px); --hw: clamp(90px, 16vw, 150px); }
+  .mg, .compact .game { --rowh: clamp(70px, 14vh, 160px); --landh: clamp(44px, 8vh, 90px); --hw: clamp(90px, 17.3vw, 162px); }
   .mg { --side: 230px; }
   .compact .game { grid-template-columns: minmax(0, 1fr) 230px; }
 }
@@ -1085,3 +1085,6 @@ a.mm-item { color: inherit; text-decoration: none; }
   .b-center, .b-search { grid-row: 2; }
   .b-tabs { grid-row: 3; border-bottom: 0; border-top: 1px solid var(--border); padding-bottom: max(6px, env(safe-area-inset-bottom)); }
 }
+
+/* La mano sporge un po' di più sopra il bordo, senza togliere spazio al campo */
+.mg-hand, .compact .mg-hand { margin-top: calc(var(--hw) * -.12); }
