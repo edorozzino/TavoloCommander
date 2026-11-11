@@ -8,6 +8,7 @@ const { colorIdentity, colorsOf, WUBRG } = require('./identity');
 const F = require('./filters');
 
 const { isType, isCreature, isGoblin, hasSub } = F;
+const BASIC_LAND_TYPES = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
 
 const STEPS = [
   'untap', 'upkeep', 'draw', 'main1',
@@ -942,6 +943,16 @@ class Game {
         this.ask({ type: 'putBack', player: ctx.controller, count: Math.min(effect.amount, s.zones.hand.length), resume });
         return true;
       case 'discard': {
+        if (effect.who === 'eachPlayer') { // ogni giocatore sceglie in ordine APNAP (CR 101.4)
+          const who = this.apnap(this.players).filter((p) => this.state.get(p).zones.hand.length);
+          const next = (i) => {
+            if (i >= who.length) return resume();
+            const n = Math.min(effect.amount, this.state.get(who[i]).zones.hand.length);
+            return this.ask({ type: 'discard', player: who[i], count: n, resume: () => next(i + 1) });
+          };
+          next(0);
+          return true;
+        }
         const count = Math.min(effect.amount, s.zones.hand.length);
         if (!count) break;
         this.ask({ type: 'discard', player: ctx.controller, count, resume });
@@ -978,9 +989,22 @@ class Game {
       case 'targetDrawsLoses':
         for (const t of ctx.targets) if (t.player) { this.draw(t.player, effect.draw); this.state.get(t.player).life -= effect.lose; }
         break;
-      case 'exileGraveyard':
-        for (const t of ctx.targets) if (t.player) for (const id of [...this.state.get(t.player).zones.graveyard]) this.move(id, 'exile');
+      case 'exileGraveyard': {
+        const who = effect.who === 'eachPlayer' ? this.players
+          : effect.who === 'eachOpponent' ? this.players.filter((p) => p !== ctx.controller)
+            : ctx.targets.filter((t) => t.player).map((t) => t.player);
+        for (const p of who) for (const id of [...this.state.get(p).zones.graveyard]) this.move(id, 'exile');
         break;
+      }
+      case 'commanderToHand': { // Command Beacon: dalla zona di comando alla mano (con due comandanti se ne sceglie uno)
+        const inZone = this.zone(ctx.controller, 'command').filter((o) => o.isCommander).map((o) => o.id);
+        if (!inZone.length) break;
+        const take = (id) => this.move(id, 'hand', { manual: true }); // nessun ritorno alla zona di comando (CR 903.9b è facoltativa)
+        if (inZone.length === 1) { take(inZone[0]); break; }
+        this.ask({ type: 'chooseCards', player: ctx.controller, options: inZone, count: 1, keep: true, prompt: 'Quale comandante metti in mano?',
+          resume: ([id]) => { take(id); resume(); } });
+        return true;
+      }
       case 'destroyAll': {
         const all = this.battlefield().filter((o) => F.GROUP[effect.filter](this, o, {}));
         this.toGraveyard(all.filter((o) => !this.hasKw(o, 'Indestructible')));
@@ -1120,15 +1144,24 @@ class Game {
       case 'search': { // la ricerca può non trovare nulla (CR 701.23); poi si mescola
         const options = this.zone(ctx.controller, 'library').filter((o) => F.CARD[effect.filter](o)).map((o) => o.id);
         this.ask({ type: 'search', player: ctx.controller, options, max: effect.max || 1,
+          validate: effect.sameLandType ? (ids) => { // Myriad Landscape: le terre scelte devono avere un tipo in comune
+            const types = ids.map((id) => (this.objects.get(id).def.subtypes || []).filter((t) => BASIC_LAND_TYPES.includes(t)));
+            if (ids.length > 1 && !types[0].some((t) => types.every((list) => list.includes(t)))) {
+              throw new RuleError('INVALID_CHOICE', 'Le terre scelte devono avere un tipo di terra in comune');
+            }
+          } : null,
           resume: (ids) => {
-            ids.forEach((id, i) => { // con split la prima carta va nella prima destinazione, le altre nella seconda
+            const moved = ids.map((id, i) => { // con split la prima carta va nella prima destinazione, le altre nella seconda
               const to = effect.split ? effect.split[Math.min(i, effect.split.length - 1)] : effect.to;
-              if (to === 'battlefieldTapped') this.move(id, 'battlefield', { tapped: true });
-              else if (to !== 'libraryTop') this.move(id, to);
+              if (to === 'battlefieldTapped') return this.move(id, 'battlefield', { tapped: true });
+              return to !== 'libraryTop' ? this.move(id, to) : id;
             });
             const lib = this.state.get(ctx.controller).zones.library;
             this.rng.shuffle(lib);
             if (effect.to === 'libraryTop') for (const id of ids) { lib.splice(lib.indexOf(id), 1); lib.unshift(id); } // Vampiric Tutor
+            if (effect.untapIfLands && this.battlefield().filter((o) => o.controller === ctx.controller && isType(o, 'Land')).length >= effect.untapIfLands) {
+              for (const id of moved) { const o = this.objects.get(id); if (o?.zone === 'battlefield') o.tapped = false; } // Fabled Passage (CR 400.7: nuovo oggetto)
+            }
             resume();
           } });
         return true;
@@ -1409,10 +1442,13 @@ Game.prototype.actions = {
     this.checkTargets(targetKindOf(effects), targets, pid, `L'abilità di ${o.name}`);
     const { sacrifice, discard } = this.checkExtraCosts(pid, ab, action, o);
     const s = this.state.get(pid);
+    // CR 119.4: si possono pagare punti vita solo se il totale è almeno pari al costo
+    if (ab.payLife && s.life < ab.payLife) throw new RuleError('NOT_ENOUGH_LIFE', `Servono ${ab.payLife} punti vita per attivare l'abilità di ${o.name}`);
     const cost = parseCost(ab.cost.replace(/\{T\}/g, ''));
     if (!canPay(s.pool, cost) && action.autoPay) this.payAutomatically(pid, cost, new Set([o.id, ...sacrifice.map((x) => x.id)]));
     if (!canPay(s.pool, cost)) throw new RuleError('NOT_ENOUGH_MANA', `Servono ${formatCost(cost)} per attivare l'abilità di ${o.name}`);
     s.pool = pay(s.pool, cost);
+    if (ab.payLife) s.life -= ab.payLife;
     if (tap) o.tapped = true;
     const lkiPower = isCreature(o) ? this.power(o) : 0;
     for (const d of discard) this.move(d.id, 'graveyard');
@@ -1532,6 +1568,7 @@ Game.prototype.actions = {
     if (ids.length > d.max || new Set(ids).size !== ids.length || ids.some((id) => !d.options.includes(id))) {
       throw new RuleError('INVALID_CHOICE', `Puoi scegliere al massimo ${d.max} carte tra quelle valide`);
     }
+    d.validate?.(ids);
     this.decision = null;
     d.resume(ids);
   },

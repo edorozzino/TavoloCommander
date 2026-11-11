@@ -690,6 +690,63 @@ const CARDS = {
     name: 'Bojuka Bog', types: ['Land'], entersTapped: true,
     abilities: [etb({ kind: 'exileGraveyard', target: 'player' }, { target: 'player' }), blackMana],
   },
+  // ---------- Mazzo Syr Konrad dell'editor: terre e artefatti di utilità (testo verificato a memoria, da ricontrollare su Scryfall) ----------
+  // {T}, Sacrifice Tormod's Crypt: Exile target player's graveyard.
+  "Tormod's Crypt": {
+    name: "Tormod's Crypt", types: ['Artifact'], cost: '{0}',
+    abilities: [{ kind: 'activated', cost: '{T}', sacrifice: 'self', effect: { kind: 'exileGraveyard', target: 'player' } }],
+  },
+  // {T}: Add {C}. / {2}, {T}: Each player draws a card.
+  'Mikokoro, Center of the Sea': {
+    name: 'Mikokoro, Center of the Sea', supertypes: ['Legendary'], types: ['Land'],
+    abilities: [{ kind: 'mana', cost: '{T}', produce: 'C' }, { kind: 'activated', cost: '{2}{T}', effect: { kind: 'draw', amount: 1, who: 'eachPlayer' } }],
+  },
+  // {T}: Add {C}. / {2}, {T}: Each player draws a card, then discards a card.
+  'Geier Reach Sanitarium': {
+    name: 'Geier Reach Sanitarium', supertypes: ['Legendary'], types: ['Land'],
+    abilities: [{ kind: 'mana', cost: '{T}', produce: 'C' }, {
+      kind: 'activated', cost: '{2}{T}', effect: [{ kind: 'draw', amount: 1, who: 'eachPlayer' }, { kind: 'discard', amount: 1, who: 'eachPlayer' }],
+    }],
+  },
+  // {T}, Pay 1 life, Sacrifice Prismatic Vista: Search your library for a basic land card, put it onto the battlefield, then shuffle.
+  'Prismatic Vista': {
+    name: 'Prismatic Vista', types: ['Land'],
+    abilities: [{ kind: 'activated', cost: '{T}', payLife: 1, sacrifice: 'self', effect: searchLand('basicLand', 'battlefield') }],
+  },
+  // {T}, Sacrifice Fabled Passage: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.
+  // Then if you control four or more lands, untap that land.
+  'Fabled Passage': {
+    name: 'Fabled Passage', types: ['Land'],
+    abilities: [{ kind: 'activated', cost: '{T}', sacrifice: 'self', effect: { ...searchLand('basicLand', 'battlefieldTapped'), untapIfLands: 4 } }],
+  },
+  // This land enters tapped. / {T}: Add {C}. / {2}, {T}, Sacrifice Myriad Landscape: Search your library for up to two basic land
+  // cards that share a land type, put them onto the battlefield tapped, then shuffle.
+  'Myriad Landscape': {
+    name: 'Myriad Landscape', types: ['Land'], entersTapped: true,
+    abilities: [{ kind: 'mana', cost: '{T}', produce: 'C' }, {
+      kind: 'activated', cost: '{2}{T}', sacrifice: 'self', effect: { ...searchLand('basicLand', 'battlefieldTapped', 2), sameLandType: true },
+    }],
+  },
+  // {T}: Add {C}. / {T}, Sacrifice Command Beacon: Put your commander into your hand from the command zone.
+  'Command Beacon': {
+    name: 'Command Beacon', types: ['Land'],
+    abilities: [{ kind: 'mana', cost: '{T}', produce: 'C' }, { kind: 'activated', cost: '{T}', sacrifice: 'self', effect: { kind: 'commanderToHand' } }],
+  },
+  // {T}: Add {C}. / {2}, {T}, Sacrifice a Desert: Exile all graveyards.
+  'Scavenger Grounds': {
+    name: 'Scavenger Grounds', types: ['Land'], subtypes: ['Desert'],
+    abilities: [{ kind: 'mana', cost: '{T}', produce: 'C' }, { kind: 'activated', cost: '{2}{T}', sacrifice: 'desert', effect: { kind: 'exileGraveyard', who: 'eachPlayer' } }],
+  },
+  // When Soul-Guide Lantern enters, exile target card from a graveyard. / {T}, Sacrifice Soul-Guide Lantern: Exile each opponent's
+  // graveyard. / {T}, Sacrifice Soul-Guide Lantern: Draw a card.
+  'Soul-Guide Lantern': {
+    name: 'Soul-Guide Lantern', types: ['Artifact'], cost: '{1}',
+    abilities: [
+      etb({ kind: 'exile', target: 'graveyardCard' }, { target: 'graveyardCard' }), // senza carte nei cimiteri l'innesco non va sulla Pila (CR 603.3d)
+      { kind: 'activated', cost: '{T}', sacrifice: 'self', effect: { kind: 'exileGraveyard', who: 'eachOpponent' } },
+      { kind: 'activated', cost: '{T}', sacrifice: 'self', effect: draw(1) },
+    ],
+  },
   // Black spells you cast cost {1} less to cast.
   'Jet Medallion': { name: 'Jet Medallion', types: ['Artifact'], cost: '{2}', abilities: [{ kind: 'static', costReduction: { filter: 'blackSpell', amount: 1 } }] },
   // This artifact enters tapped. / {1}, {T}: Destroy all artifacts, creatures, and enchantments.

@@ -78,6 +78,7 @@ const SACRIFICE = {
   goblin: (g, o, pid) => o.controller === pid && isGoblin(o),
   creature: (g, o, pid) => o.controller === pid && isCreature(o),
   land: (g, o, pid) => o.controller === pid && isType(o, 'Land'),
+  desert: (g, o, pid) => o.controller === pid && hasSub(o, 'Desert'),
   artifactOrCreature: (g, o, pid) => o.controller === pid && (isType(o, 'Artifact') || isCreature(o)),
   anotherBlackCreature: (g, o, pid, src) => o.controller === pid && isCreature(o) && colorsOf(o.def).includes('B') && (!src || o.id !== src.id),
 };

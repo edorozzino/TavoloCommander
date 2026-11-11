@@ -766,7 +766,7 @@
     const abilities = o.abilities || [];
     if (!abilities.length) return showDetail(o, `${o.name} non ha abilità da attivare`);
     const label = (ab) => {
-      const parts = [ab.tap ? '{T}' : '', ab.cost, ab.sacrifice ? 'sacrifica' : '', ab.discard ? 'scarta' : ''].filter(Boolean).join(', ');
+      const parts = [ab.tap ? '{T}' : '', ab.cost, ab.payLife ? `paga ${ab.payLife} vita` : '', ab.sacrifice ? 'sacrifica' : '', ab.discard ? 'scarta' : ''].filter(Boolean).join(', ');
       return ab.kind === 'mana' ? `Mana: ${ab.colors ? `un colore a scelta (${ab.colors.join('/')})` : ab.produce}${parts ? ` (${parts})` : ''}` : `Attiva: ${parts || 'senza costo'}`;
     };
     const options = abilities.map((ab) => {

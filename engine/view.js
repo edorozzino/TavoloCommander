@@ -107,6 +107,7 @@ function abilitiesOf(g, o, pid) {
       sacrifice: a.sacrifice || null,
       sacrificeOptions: sacrificeOptions(g, a.sacrifice, pid, o),
       discard: a.discard || 0,
+      payLife: a.payLife || 0,
     };
     const canAct = g.priority === pid && !g.decision;
     if (a.kind === 'mana') {
