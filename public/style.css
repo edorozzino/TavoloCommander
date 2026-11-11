@@ -1088,3 +1088,7 @@ a.mm-item { color: inherit; text-decoration: none; }
 
 /* La mano sporge un po' di più sopra il bordo, senza togliere spazio al campo */
 .mg-hand, .compact .mg-hand { margin-top: calc(var(--hw) * -.12); }
+
+.b-report { margin: 0; padding-left: 18px; }
+.b-report li { margin: 6px 0; }
+.b-report .muted { font-size: 12px; }

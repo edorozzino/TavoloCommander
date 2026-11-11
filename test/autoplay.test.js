@@ -261,3 +261,18 @@ test('dopo la fine si torna in sala con gli stessi mazzi per la rivincita', asyn
   await autoplay.handle(a, { t: 'autoStart' });
   assert.ok(a.last('autoState').game);
 });
+
+test('il rapporto di un mazzo conta le carte automatiche e segnala quelle non trovate', async () => {
+  const realFetch = global.fetch;
+  global.fetch = async () => { throw new Error('rete non disponibile'); };
+  try {
+    const r = await autoplay.deckReport({ commanders: ['Krenko, Mob Boss'], cards: [{ name: 'Mountain', count: 30 }, { name: 'Carta Che Non Esiste', count: 1 }] });
+    assert.equal(r.total, 32);
+    assert.equal(r.auto, 31);
+    assert.equal(r.percent, 97);
+    assert.deepEqual(r.unknown, ['Carta Che Non Esiste']);
+    assert.deepEqual(r.manual, []);
+  } finally {
+    global.fetch = realFetch;
+  }
+});

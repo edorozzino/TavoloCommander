@@ -77,9 +77,57 @@ function parseActivationCost(text, self) {
   return ab;
 }
 
+// Frasi che il motore sa applicare da solo. Ogni frase riconosciuta toglie dagli effetti a mano tutte le carte che la usano.
+// Solo effetti senza bersaglio e senza scelte nascoste nel testo: se una parte della riga non si riconosce, resta tutta a mano.
+const NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const N = '(an?|one|two|three|four|five|six|seven|eight|nine|ten|\\d+)';
+const num = (w) => NUMBER_WORDS[w.toLowerCase()] ?? Number(w);
+const EFFECT_PATTERNS = [
+  [() => `^(?:you )?draw ${N} cards?$`, (m) => ({ kind: 'draw', amount: num(m[1]) })],
+  [() => `^you draw ${N} cards? and you lose ${N} life$`, (m) => [{ kind: 'draw', amount: num(m[1]) }, { kind: 'loseLife', amount: num(m[2]) }]],
+  [() => `^each player draws ${N} cards?$`, (m) => ({ kind: 'draw', amount: num(m[1]), who: 'eachPlayer' })],
+  [() => `^you gain ${N} life$`, (m) => ({ kind: 'gainLife', amount: num(m[1]) })],
+  [() => `^you lose ${N} life$`, (m) => ({ kind: 'loseLife', amount: num(m[1]) })],
+  [() => `^each opponent loses ${N} life and you gain ${N} life$`, (m) => [{ kind: 'loseLife', amount: num(m[1]), to: 'eachOpponent' }, { kind: 'gainLife', amount: num(m[2]) }]],
+  [() => `^each opponent loses ${N} life$`, (m) => ({ kind: 'loseLife', amount: num(m[1]), to: 'eachOpponent' })],
+  [(self) => `^(?:${self}) deals ${N} damage to each opponent$`, (m) => ({ kind: 'damage', amount: num(m[1]), to: 'eachOpponent' })],
+  [() => `^scry ${N}$`, (m) => ({ kind: 'scry', amount: num(m[1]) })],
+  [() => `^mill ${N} cards?$`, (m) => ({ kind: 'mill', amount: num(m[1]), who: 'you' })],
+  [() => `^each player mills ${N} cards?$`, (m) => ({ kind: 'mill', amount: num(m[1]), who: 'eachPlayer' })],
+  [() => '^destroy all creatures$', () => ({ kind: 'destroyAll', filter: 'creatures' })],
+  [() => '^search your library for a basic land card, put (?:it|that card) onto the battlefield tapped, then shuffle$', () => ({ kind: 'search', filter: 'basicLand', to: 'battlefieldTapped', max: 1 })],
+];
+
+// "Draw two cards. You lose 2 life." → [draw 2, loseLife 2]; null se anche una sola parte non è riconosciuta
+function parseEffect(text, self) {
+  const clauses = text.replace(/\.$/, '').split(/\. |, then (?!shuffle)/);
+  const out = [];
+  for (const clause of clauses) {
+    let found = null;
+    for (const [pattern, build] of EFFECT_PATTERNS) {
+      const m = clause.trim().match(new RegExp(pattern(self), 'i'));
+      if (m) { found = build(m); break; }
+    }
+    if (!found) return null;
+    out.push(...[].concat(found));
+  }
+  return out.length === 1 ? out[0] : out;
+}
+
+// Effetto di un'abilità: "you may" diventa una domanda al giocatore
+function parseAbilityEffect(text, self) {
+  const optional = /^you may /i.test(text);
+  const effect = parseEffect(optional ? text.replace(/^you may /i, '') : text, self);
+  if (!effect) return null;
+  if (!optional) return effect;
+  return Array.isArray(effect) ? null : { kind: 'may', effect };
+}
+
 const TRIGGERS = [
   ['etb', (self) => `^When(?:ever)? (?:${self}) enters(?: the battlefield)?, `],
   ['dies', (self) => `^When(?:ever)? (?:${self}) dies, `],
+  ['dies', () => '^Whenever another nontoken creature you control dies, ', 'anotherNontokenCreatureYouControl'],
+  ['dies', () => '^Whenever another creature you control dies, ', 'anotherCreatureYouControl'],
   ['attacks', (self) => `^When(?:ever)? (?:${self}) attacks, `],
   ['upkeep', () => '^At the beginning of your upkeep, '],
   ['endStep', () => '^At the beginning of your end step, '],
@@ -125,7 +173,12 @@ function defFromScryfall(info) {
       if (kw && !twoFaced) def.keywords.push(...kw);
       else manual.push(line);
     }
-    if (isSpell) def.effect = [{ kind: 'manual', text: manual.join('\n') }];
+    // Una magia è automatica solo se si riconosce tutto il suo testo: applicarne metà sarebbe peggio che niente
+    const parsed = isSpell && !twoFaced && manual.length ? manual.map((line) => parseEffect(stripReminder(line), reEscape(info.name))) : [];
+    if (parsed.length && parsed.every(Boolean)) {
+      def.effect = parsed.flat();
+      manual.length = 0;
+    } else if (isSpell) def.effect = [{ kind: 'manual', text: manual.join('\n') }];
   } else {
     const shortName = info.name.split(',')[0];
     const self = ['this creature', 'this artifact', 'this enchantment', 'this land', 'this permanent', reEscape(info.name), reEscape(shortName)].join('|');
@@ -138,16 +191,20 @@ function defFromScryfall(info) {
       if (new RegExp(`^(${self}) enters(?: the battlefield)? tapped\\.$`, 'i').test(text)) { def.entersTapped = true; continue; }
       const ma = parseManaAbility(text);
       if (ma) { mana.push({ ability: ma, line }); continue; }
-      manual.push(line);
       const trigger = TRIGGERS.find(([, re]) => new RegExp(re(self)).test(text));
       if (trigger) {
-        def.abilities.push({ kind: 'triggered', when: trigger[0], effect: { kind: 'manual', text: line } });
+        const [when, re, filter] = trigger;
+        const effect = parseAbilityEffect(text.replace(new RegExp(re(self)), ''), self);
+        if (!effect) manual.push(line);
+        def.abilities.push({ kind: 'triggered', when, ...(filter ? { filter } : {}), effect: effect || { kind: 'manual', text: line } });
         continue;
       }
       const act = text.match(/^([^:"]+): (.+)$/);
       // le abilità di mana con effetti in più non usano la Pila: restano solo nel testo manuale
       const cost = act && !act[2].startsWith('Add ') && parseActivationCost(act[1], self);
-      if (cost) def.abilities.push({ kind: 'activated', ...cost, effect: { kind: 'manual', text: line } });
+      const effect = cost && parseEffect(act[2], self);
+      if (!effect) manual.push(line);
+      if (cost) def.abilities.push({ kind: 'activated', ...cost, effect: effect || { kind: 'manual', text: line } });
     }
     // Il motore usa una sola abilità di mana per permanente: più abilità semplici diventano "un colore a scelta"
     const simple = mana.every(({ ability: a }) => a.cost === '{T}' && (a.produce.length === 1 || a.produce === 'choice' || a.produce === 'anyColor'));

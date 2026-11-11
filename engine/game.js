@@ -954,7 +954,8 @@ class Game {
         return true;
       }
       case 'draw':
-        this.draw(ctx.controller, this.count(effect.amount, ctx));
+        if (effect.who === 'eachPlayer') for (const p of this.players) this.draw(p, this.count(effect.amount, ctx));
+        else this.draw(ctx.controller, this.count(effect.amount, ctx));
         break;
       case 'loseLife': {
         const n = this.count(effect.amount, ctx);

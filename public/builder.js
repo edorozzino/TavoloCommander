@@ -497,6 +497,7 @@
         <span class="b-sep"></span>
         <button data-b="clear">Svuota</button>
         <button data-b="hand">Mano di prova</button>
+        <button data-b="report">Automazione</button>
         <span class="b-sep"></span>
         <button id="b-play" data-b="play" class="primary">Gioca con questo mazzo</button>
         <button data-b="close">Chiudi</button>
@@ -581,6 +582,15 @@
         renderResults();
       },
       hand: testHand,
+      // Quali carte il gioco applica da solo e quali righe di testo restano da applicare a mano
+      async report() {
+        const r = await api('deck-report', { method: 'POST', body: { commanders: deck.commanders, cards: deck.cards } });
+        CT.openModal(`<h2>Automazione delle carte</h2>
+          <p><b>${r.auto} carte su ${r.total}</b> si applicano da sole (${r.percent}%).</p>
+          ${r.manual.length ? `<h3>Con effetti a mano (${r.manual.length})</h3><ul class="b-report">${r.manual.map((c) => `<li><b>${esc(c.name)}</b>${c.manual.map((l) => `<div class="muted">${esc(l)}</div>`).join('')}</li>`).join('')}</ul>` : '<p>Nessuna carta richiede effetti a mano.</p>'}
+          ${r.unknown.length ? `<h3>Non trovate su Scryfall (${r.unknown.length})</h3><p class="muted">${r.unknown.map(esc).join(', ')}</p>` : ''}
+          <div class="row"><button data-close>Chiudi</button></div>`);
+      },
       async play() {
         if (!deck.commanders.length && !confirm('Il mazzo non ha un comandante. Usarlo comunque?')) return;
         if (dirty && confirm('Salvare le modifiche prima di giocare?')) await save(false);
@@ -594,7 +604,7 @@
           ...(CT.inGame() ? [['', [['play', '▶ Gioca con questo mazzo']]]] : []),
           ['Mazzo', [['new', 'Nuovo mazzo'], ['saveas', 'Salva con nome'], ['rename', 'Rinomina'], ['delete', 'Elimina', 'danger']]],
           ['Importa ed esporta', [['import', 'Importa .txt'], ['starter', 'Mazzi iniziali'], ['export', 'Esporta .txt']]],
-          ['Strumenti', [['hand', 'Mano di prova'], ['clear', 'Svuota il mazzo', 'danger']]],
+          ['Strumenti', [['hand', 'Mano di prova'], ['report', 'Automazione delle carte'], ['clear', 'Svuota il mazzo', 'danger']]],
         ], 'cols');
       },
       pick() {

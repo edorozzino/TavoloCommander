@@ -105,6 +105,7 @@ async function handleApi(req, res, url) {
     if (!process.env.RENDER) for (const ip of ips.filter((x) => !tailnet(x))) addresses.push({ url: `http://${ip}:${PORT}`, label: 'Stessa Wi-Fi', note: 'Solo per chi è collegato alla tua rete' });
     return sendJson(res, 200, { addresses, key: auth.enabled && !accounts ? PASSWORD : null, inviteOnly: Boolean(accounts), isAdmin: auth.user?.(req)?.role === 'admin' });
   }
+  if (resource === 'deck-report' && req.method === 'POST') return sendJson(res, 200, await autoplay.deckReport(await readBody(req)));
   if (resource === 'starter-decks' && req.method === 'GET') {
     return sendJson(res, 200, STARTER_DECKS.map((d, i) => ({
       id: `starter-${i}`, name: d.name, style: d.style, commanders: [d.commander], cards: d.cards, maybe: [],

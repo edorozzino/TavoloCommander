@@ -9,8 +9,8 @@ const { commanderGame, advanceTo, passAll } = require('./helpers');
 const info = (name, type, manaCost, oracle, extra = {}) => ({ name, type, manaCost, oracle, power: null, toughness: null, colorIdentity: [], ...extra });
 const CARDS = Object.fromEntries([
   info('Dark Ritual', 'Instant', '{B}', 'Add {B}{B}{B}.'),
-  info('Elvish Visionary', 'Creature — Elf Shaman', '{1}{G}', 'When this creature enters, draw a card.', { power: '1', toughness: '1' }),
-  info('Viscera Seer', 'Creature — Vampire Wizard', '{B}', 'Sacrifice a creature: Scry 1.', { power: '1', toughness: '1' }),
+  info('Elvish Visionary', 'Creature — Elf Shaman', '{1}{G}', 'When this creature enters, target player draws a card.', { power: '1', toughness: '1' }),
+  info('Viscera Seer', 'Creature — Vampire Wizard', '{B}', 'Sacrifice a creature: Put a +1/+1 counter on this creature.', { power: '1', toughness: '1' }),
 ].map((i) => [i.name, defFromScryfall(i)]));
 
 function game() {
@@ -145,5 +145,5 @@ test('la vista segnala le carte con testo da applicare a mano', () => {
   const id = g.setup.putOnBattlefield('A', 'Viscera Seer');
   const v = buildView(g, 'A');
   assert.equal(v.manual, true);
-  assert.match(v.players[0].battlefield.find((o) => o.id === id).manual[0], /Scry 1/);
+  assert.match(v.players[0].battlefield.find((o) => o.id === id).manual[0], /counter/);
 });

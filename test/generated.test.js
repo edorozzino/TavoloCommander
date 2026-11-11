@@ -11,11 +11,12 @@ const info = (name, type, manaCost, oracle, extra = {}) => ({ name, type, manaCo
 const ELVES = info('Llanowar Elves', 'Creature — Elf Druid', '{G}', '{T}: Add {G}.', { power: '1', toughness: '1', colorIdentity: ['G'] });
 const ANGEL = info('Serra Angel', 'Creature — Angel', '{3}{W}{W}', 'Flying, vigilance', { power: '4', toughness: '4', colorIdentity: ['W'] });
 const TOMB = info('Overgrown Tomb', 'Land — Swamp Forest', '', '({T}: Add {B} or {G}.)\nAs Overgrown Tomb enters, you may pay 2 life. If you don\'t, it enters tapped.', { colorIdentity: ['B', 'G'] });
-const SEER = info('Viscera Seer', 'Creature — Vampire Wizard', '{B}', 'Sacrifice a creature: Scry 1. (Look at the top card of your library. You may put that card on the bottom.)', { power: '1', toughness: '1', colorIdentity: ['B'] });
+// Testi scelti apposta tra quelli che il traduttore non riconosce: qui si prova il percorso degli effetti a mano
+const SEER = info('Viscera Seer', 'Creature — Vampire Wizard', '{B}', 'Sacrifice a creature: Put a +1/+1 counter on this creature.', { power: '1', toughness: '1', colorIdentity: ['B'] });
 const RITUAL = info('Dark Ritual', 'Instant', '{B}', 'Add {B}{B}{B}.', { colorIdentity: ['B'] });
 const TALISMAN = info('Talisman of Indulgence', 'Artifact', '{2}', '{T}: Add {C}.\n{T}: Add {B} or {R}. Talisman of Indulgence deals 1 damage to you.', { colorIdentity: ['B', 'R'] });
-const GUARDIAN = info('Elvish Visionary', 'Creature — Elf Shaman', '{1}{G}', 'When this creature enters, draw a card.', { power: '1', toughness: '1', colorIdentity: ['G'] });
-const BARD = info('Gloom Bard', 'Creature — Zombie Bard', '{2}{B}', 'At the beginning of your end step, each opponent loses 1 life.', { power: '2', toughness: '2', colorIdentity: ['B'] });
+const GUARDIAN = info('Elvish Visionary', 'Creature — Elf Shaman', '{1}{G}', 'When this creature enters, target player draws a card.', { power: '1', toughness: '1', colorIdentity: ['G'] });
+const BARD = info('Gloom Bard', 'Creature — Zombie Bard', '{2}{B}', 'At the beginning of your end step, target opponent loses 1 life.', { power: '2', toughness: '2', colorIdentity: ['B'] });
 const ZUL = info('Zul Ashur, Lich Lord', 'Legendary Creature — Zombie Warlock', '{1}{B}', 'Ward—Pay 2 life.', { power: '2', toughness: '2', colorIdentity: ['B'] });
 
 const CARDS = Object.fromEntries([ELVES, ANGEL, TOMB, SEER, RITUAL, TALISMAN, GUARDIAN, BARD, ZUL].map((i) => [i.name, defFromScryfall(i)]));

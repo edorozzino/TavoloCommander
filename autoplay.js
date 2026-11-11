@@ -69,6 +69,25 @@ async function prefetchDecks() {
   if (names.length) await lookupCards(names);
 }
 
+// Che cosa il motore applica da solo in un mazzo: per ogni carta con effetti a mano, le righe di testo non riconosciute
+async function deckReport(d) {
+  const entries = [...(d.commanders || []).map((name) => ({ name, count: 1 })), ...(d.cards || [])]
+    .filter((e) => typeof e?.name === 'string').slice(0, 300).map((e) => ({ name: e.name.slice(0, 200), count: Math.max(1, Math.min(99, Number(e.count) || 1)) }));
+  const unknown = entries.map((e) => e.name).filter((n) => cardStatus(n) === 'unknown');
+  if (unknown.length) await lookupCards(unknown).catch(() => {}); // senza Scryfall restano "non trovate"
+  const total = entries.reduce((s, e) => s + e.count, 0);
+  const rows = entries.map((e) => {
+    const status = cardStatus(e.name);
+    return { ...e, status, manual: status === 'manual' ? defFromScryfall(cachedCard(e.name)).manual : [] };
+  });
+  const auto = rows.filter((r) => r.status === 'auto').reduce((s, e) => s + e.count, 0);
+  return {
+    total, auto, percent: total ? Math.round((100 * auto) / total) : 100,
+    manual: rows.filter((r) => r.status === 'manual').map(({ name, count, manual }) => ({ name, count, manual })),
+    unknown: rows.filter((r) => r.status === 'unknown').map((r) => r.name),
+  };
+}
+
 // Nomi del mazzo trasformati nei nomi ufficiali, più le definizioni delle carte che il motore non ha programmato
 async function resolveDeck(d) {
   const { found, notFound } = await lookupCards(namesOf(d).filter((n) => !CARDS[n]));
@@ -565,4 +584,4 @@ function endGameForTest(code, winner) {
   rooms.get(code).game.winner = winner;
 }
 
-module.exports = { handle, disconnect, endGameForTest, listTables, closeTable, sweep: () => sweepRooms(rooms, closeRoom), isAutoMessage: (msg) => /^(auto|lesson)/.test(String(msg.t || '')) };
+module.exports = { handle, disconnect, endGameForTest, deckReport, listTables, closeTable, sweep: () => sweepRooms(rooms, closeRoom), isAutoMessage: (msg) => /^(auto|lesson)/.test(String(msg.t || '')) };
