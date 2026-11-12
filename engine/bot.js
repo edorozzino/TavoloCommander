@@ -6,7 +6,7 @@ const F = require('./filters');
 const { isType, isCreature } = F;
 
 // Magie che colpiscono anche le creature del bot: solo se gli avversari hanno chiaramente più creature
-const BOARD_WIPES = new Set(['Damnation', 'Blasphemous Act', 'Evacuation', 'Living Death', 'All Is Dust', "Nevinyrral's Disk"]);
+const BOARD_WIPES = new Set(['Damnation', 'Blasphemous Act', 'Evacuation', 'Living Death', 'All Is Dust', "Nevinyrral's Disk", 'Oblivion Stone']);
 // Effetti dannosi per il bersaglio: si rivolgono agli avversari
 const HARMFUL = new Set(['damage', 'destroy', 'bounce', 'counter', 'mill', 'targetLosesYouGain', 'exileGraveyard', 'poison']);
 const MAX_ACTIONS_PER_STEP = 25;
@@ -256,7 +256,9 @@ function decide(g, pid, d) {
     case 'declareBlockers': return declareBlockers(g, pid);
     case 'discard': return { type: 'discard', objects: chooseDiscard(g, pid, d.count) };
     case 'chooseTarget': {
-      const e = effectOf([].concat(d.trigger?.ability?.effect || [])) || { kind: d.trigger?.ability?.effect?.kind };
+      const ab = d.trigger?.ability;
+      const effs = d.trigger?.mode != null ? [ab.modes[d.trigger.mode]] : [].concat(ab?.effect || []);
+      const e = effectOf(effs) || { kind: effs[0]?.kind };
       const t = pickTarget(g, pid, e, d.options);
       return { type: 'chooseTarget', target: t || (d.optional ? null : d.options[0]) };
     }
@@ -288,6 +290,14 @@ function decide(g, pid, d) {
       return { type: 'chooseCards', objects: [...d.options].sort((a, b) => score(b) - score(a)).slice(0, d.count) };
     }
     case 'chooseSacrifice': return { type: 'chooseSacrifice', object: chooseSacrifice(g, pid, d.options) };
+    case 'chooseMode': { // Shambling Ghast: -1/-1 se uccide qualcosa, altrimenti la modalità più semplice
+      const ok = d.modes.filter((m) => m.ok);
+      const kills = ok.find((m) => {
+        const eff = d.trigger.ability.modes[m.index];
+        return eff.kind === 'pump' && g.targetOptions(eff.target, pid).some((t) => g.toughness(g.object(t.object)) + (eff.toughness || 0) <= 0);
+      });
+      return { type: 'chooseMode', mode: (kills || ok[0]).index };
+    }
     case 'manual': return { type: 'manual', op: 'done' }; // il bot non sa applicare effetti scritti a mano
     default: throw new Error(`Decisione non gestita dal bot: ${d.type}`);
   }

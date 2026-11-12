@@ -132,6 +132,8 @@ function randomGame(seed, { players = 4, maxTurns = 25 } = {}) {
       if (!attempt(p, { type: 'putBack', objects: [pick(hand)] })) attempt(p, { type: 'putBack', objects: hand.slice(-d.count) });
     } else if (d.type === 'chooseSacrifice') {
       if (!attempt(p, { type: 'chooseSacrifice', object: pick([...g.objects.keys()]) })) attempt(p, { type: 'chooseSacrifice', object: pick(d.options) });
+    } else if (d.type === 'chooseMode') {
+      if (!attempt(p, { type: 'chooseMode', mode: Math.floor(rng.next() * 3) })) attempt(p, { type: 'chooseMode', mode: d.modes.find((m) => m.ok).index });
     } else if (d.type === 'chooseCards') {
       if (!attempt(p, { type: 'chooseCards', objects: [] })) attempt(p, { type: 'chooseCards', objects: d.options.slice(0, d.count) });
     } else if (d.type === 'discard') {
@@ -155,6 +157,11 @@ function randomGame(seed, { players = 4, maxTurns = 25 } = {}) {
     if (r < 0.88) {
       const castable = [...hand, ...mine(p, 'command')];
       if (castable.length) return attempt(p, { type: 'cast', object: pick(castable).id, targets: rng.next() < 0.7 ? [randomTarget()] : [], ...extras(p) });
+    }
+    if (r < 0.9 && hand.length) return attempt(p, { type: 'cycle', object: pick(hand).id, autoPay: rng.next() < 0.7 });
+    if (r < 0.92 && mine(p, 'graveyard').length) { // Fuga, con carte da esiliare a caso
+      const grave = mine(p, 'graveyard').map((o) => o.id);
+      return attempt(p, { type: 'cast', object: pick(grave), escape: true, exile: grave.filter(() => rng.next() < 0.6).slice(0, 4), ...extras(p) });
     }
     if (field.length) {
       const o = pick(field);

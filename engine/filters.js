@@ -27,6 +27,7 @@ const GROUP = {
   artifactsCreaturesEnchantments: (g, o) => ['Artifact', 'Creature', 'Enchantment'].some((x) => isType(o, x)),
   attackingCreaturesYouControl: (g, o, src) => isCreature(o) && o.controller === src.controller && !!g.combat?.attackers.has(o.id),
   attackingCreatures: (g, o) => isCreature(o) && !!g.combat?.attackers.has(o.id),
+  nonlandWithoutFate: (g, o) => !isType(o, 'Land') && !o.counters.fate, // Oblivion Stone
 };
 
 // Eventi che fanno innescare un'abilità (w = permanente con l'abilità, d = oggetto dell'evento)
@@ -75,6 +76,7 @@ const CARD = {
 // Permanenti che si possono sacrificare per pagare un costo (pid = chi paga, src = fonte del costo)
 const SACRIFICE = {
   self: (g, o, pid, src) => src && o.id === src.id,
+  anotherCreature: (g, o, pid, src) => o.controller === pid && isCreature(o) && (!src || o.id !== src.id),
   goblin: (g, o, pid) => o.controller === pid && isGoblin(o),
   creature: (g, o, pid) => o.controller === pid && isCreature(o),
   land: (g, o, pid) => o.controller === pid && isType(o, 'Land'),

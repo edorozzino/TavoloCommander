@@ -28,9 +28,19 @@ i numeri citati nel codice esistano ancora dopo un aggiornamento del regolamento
 | 704.5j | Regola delle leggende | ✅ | |
 | 704.5q | Segnalini +1/+1 e -1/-1 si annullano | ✅ | |
 | 704.5i | Planeswalker a fedeltà 0 | — | Nessun planeswalker tra le carte programmate |
-| 704.5m–p | Aure e Equipaggiamenti non legalmente assegnati | — | Nessuna Aura o Equipaggiamento tra le carte programmate |
+| 704.5m | Aura non legalmente assegnata va nel cimitero | ✅ | Solo Animate Dead, l'unica Aura programmata |
+| 704.5n–p | Equipaggiamenti e Fortificazioni non legalmente assegnati | — | Nessun Equipaggiamento tra le carte programmate |
 | 704.6c | 21 danni da comandante | ✅ | |
 | 704.6d | Comandante da cimitero o esilio alla zona di comando | ✅ | |
+
+## Parole chiave e modalità
+
+| Regola | Argomento | Stato | Note |
+|---|---|---|---|
+| 700.2b | Abilità innescate modali: la modalità si sceglie quando vanno sulla Pila | ✅ | Shambling Ghast |
+| 702.29 | Ciclo terre base | ✅ | Ash Barrens |
+| 702.138 | Fuga dal cimitero, con segnalini all'entrata | ✅ | Woe Strider |
+| 702.37 | Metamorfosi | — | Grim Haruspex si lancia solo a faccia in su |
 
 ## Combattimento
 

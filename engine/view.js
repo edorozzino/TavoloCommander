@@ -36,7 +36,9 @@ function objectView(g, o, ctx, { own = false, castable = false } = {}) {
     if (o.def.types.includes('Creature')) Object.assign(v, { power: g.power(o), toughness: g.toughness(o), sick: g.isSick(o) });
     if (own) v.abilities = abilitiesOf(g, o, ctx.viewer);
   }
-  if (castable) {
+  if (castable && o.zone === 'graveyard') {
+    if (o.def.escape) v.escape = escapeInfo(g, o, ctx.viewer); // Fuga: si lancia dal cimitero
+  } else if (castable) {
     v.cast = castInfo(g, o, ctx.viewer);
     v.playable = v.cast.playable;
   }
@@ -70,9 +72,23 @@ function playability(g, pid, action, extra) {
   return g.check(pid, { ...action, ...extra });
 }
 
+// Fuga (CR 702.138): costo, carte da esiliare e se ora è possibile
+function escapeInfo(g, o, pid) {
+  const others = g.zone(pid, 'graveyard').filter((x) => x.id !== o.id).map((x) => x.id);
+  const targets = targetOptions(g, [].concat(o.def.effect || []), pid);
+  const extra = sampleChoices(g, targets, null, 0, pid, o.id);
+  const action = { type: 'cast', object: o.id, autoPay: true, escape: true, exile: others.slice(0, o.def.escape.exile) };
+  return { cost: o.def.escape.cost, exile: o.def.escape.exile, options: others, playable: playability(g, pid, action, extra) };
+}
+
+function cycleInfo(g, o, pid) {
+  if (!o.def.cycling) return null;
+  return { cost: o.def.cycling.cost, playable: g.check(pid, { type: 'cycle', object: o.id, autoPay: true }) };
+}
+
 function castInfo(g, o, pid) {
   const def = o.def;
-  if (def.types.includes('Land')) return { land: true, playable: g.check(pid, { type: 'playLand', object: o.id }) };
+  if (def.types.includes('Land')) return { land: true, playable: g.check(pid, { type: 'playLand', object: o.id }), cycle: cycleInfo(g, o, pid) };
   const modes = def.modes ? def.modes.map((m, i) => ({ index: i, name: def.modeNames?.[i] || `Modalità ${i + 1}`, targets: targetOptions(g, [m], pid) })) : null;
   const sacrifice = sacrificeOptions(g, def.additionalCost?.sacrifice, pid, o);
   const discard = def.additionalCost?.discard || 0;
@@ -90,8 +106,10 @@ function castInfo(g, o, pid) {
     instantSpeed: def.types.includes('Instant') || (def.keywords || []).includes('Flash'),
     targets: modes ? [] : targetOptions(g, [].concat(def.effect || []), pid),
     modes,
-    sacrificeOptions: sacrificeOptions(g, def.additionalCost?.sacrifice, pid, o),
+    sacrificeOptions: sacrificeOptions(g, def.additionalCost?.sacrifice || def.additionalCost?.sacrificeAny, pid, o),
+    sacrificeAny: !!def.additionalCost?.sacrificeAny, // quante creature si vuole, anche nessuna
     discard: def.additionalCost?.discard || 0,
+    cycle: cycleInfo(g, o, pid),
   };
 }
 
@@ -140,6 +158,7 @@ function decisionView(g, d, viewer, ctx) {
     case 'scry': return { ...base, cards: cards(d.cards) };
     case 'chooseCards': return { ...base, cards: cards(d.options), count: d.count, prompt: d.prompt };
     case 'chooseSacrifice': return { ...base, options: d.options };
+    case 'chooseMode': return { ...base, modes: d.modes, source: d.source };
     case 'discard': case 'putBack': return { ...base, count: d.count, bottom: d.bottom };
     case 'confirm': return { ...base, prompt: d.prompt, mulligan: d.mulligan };
     case 'assignDamage': return { ...base, attacker: d.attacker, attackerName: d.attackerName, power: d.power, blockers: d.blockers };
@@ -177,7 +196,7 @@ function buildView(g, viewer, { names = {}, images = {}, arts = {}, artists = {}
         hand: own ? zone(pid, 'hand', { castable: canAct }) : null,
         // sul campo conta il controllore, non il proprietario (CR 108.4)
         battlefield: g.battlefield().filter((o) => o.controller === pid).map((o) => objectView(g, o, ctx, { own })),
-        graveyard: zone(pid, 'graveyard'),
+        graveyard: zone(pid, 'graveyard', { castable: own && canAct }),
         exile: zone(pid, 'exile'),
         command: zone(pid, 'command', { castable: own && canAct }),
       };

@@ -258,6 +258,11 @@ class Game {
         mods.toughness += n * (a.selfBoost.toughness || 0);
       }
     }
+    for (const auraId of o.enchantedBy || []) { // Animate Dead: -1/-0 finché resta attaccata
+      const aura = this.objects.get(auraId);
+      const m = aura?.attachedTo === o.id && aura.zone === 'battlefield' && aura.def.enchantedMod;
+      if (m && what !== 'kw') { mods.power += m.power || 0; mods.toughness += m.toughness || 0; }
+    }
     for (const e of this.eot) {
       if (e.id !== o.id) continue;
       mods.power += e.power || 0;
@@ -330,6 +335,7 @@ class Game {
       case 'devotionBlack': // CR 700.5: simboli {B} nei costi dei permanenti che controlli
         return field.filter(mine).reduce((n, o) => n + (String(o.def.cost || '').match(/\{B\}/g) || []).length, 0);
       case 'sacrificedPower': return ctx.sacrificedPower || 0;
+      case 'copiesPlusOne': return (ctx.sacrificedCount || 0) + 1; // Plumb the Forbidden: la magia più una copia per sacrificio
       case 'selfPower': {
         const src = this.objects.get(ctx.source);
         return src && src.zone === 'battlefield' ? this.power(src) : ctx.lkiPower || 0;
@@ -369,7 +375,7 @@ class Game {
       controller: opts.controller || owner,
       zone,
       tapped: opts.tapped ?? (zone === 'battlefield' && (!!def.entersTapped
-        || (def.entersTappedUnless === 'controlsSwamp' && !this.battlefield().some((x) => x.controller === (opts.controller || owner) && hasSub(x, 'Swamp'))))),
+        || (!!def.entersTappedUnless && !this.untappedCondition(def.entersTappedUnless, opts.controller || owner)))),
       damage: 0,
       deathtouched: false,
       counters: {},
@@ -386,6 +392,14 @@ class Game {
     return id;
   }
 
+  // "Enters tapped unless…": la condizione si controlla prima che il permanente sia sul campo, quindi conta solo gli altri
+  untappedCondition(kind, pid) {
+    const swamps = this.battlefield().filter((x) => x.controller === pid && hasSub(x, 'Swamp')).length;
+    if (kind === 'controlsSwamp') return swamps >= 1;
+    if (kind === 'controls3OtherSwamps') return swamps >= 3; // Witch's Cottage
+    throw new Error(`Condizione di entrata non supportata: ${kind}`);
+  }
+
   createToken(controller, name, opts = {}) {
     const def = getToken(name);
     return this.create(controller, def.name, 'battlefield', { ...opts, def, isToken: true });
@@ -394,7 +408,7 @@ class Game {
   // Inneschi di entrata: quelli del permanente stesso e quelli di chi osserva le creature che entrano
   onEnter(o) {
     if (isCreature(o) && isGoblin(o)) this.enteredThisTurn[o.controller] = (this.enteredThisTurn[o.controller] || 0) + 1;
-    for (const a of this.triggersOf(o, 'etb')) this.queueTrigger(o, a);
+    for (const a of this.triggersOf(o, 'etb')) if (!a.ifUntapped || !o.tapped) this.queueTrigger(o, a); // "enters untapped" (Witch's Cottage)
     for (const w of this.battlefield()) {
       for (const a of this.triggersOf(w, 'creatureEnters')) if (F.TRIGGER[a.filter](this, o, w)) this.queueTrigger(w, a, { subject: o.id });
       for (const a of this.triggersOf(w, 'landEnters')) if (F.TRIGGER[a.filter](this, o, w)) this.queueTrigger(w, a, { subject: o.id }); // approdo
@@ -417,7 +431,7 @@ class Game {
     if (leaving.isCommander && (zone === 'hand' || zone === 'library') && !opts.manual
       && this.state.get(leaving.owner).preferences.commanderToCommandZone) zone = 'command'; // CR 903.9b
     if (leaving.zone === 'battlefield' && zone !== 'battlefield') {
-      for (const a of this.triggersOf(leaving, 'leaves')) this.queueTrigger(leaving, a); // CR 603.6c
+      for (const a of this.triggersOf(leaving, 'leaves')) this.queueTrigger(leaving, a, { subject: leaving.attachedTo }); // CR 603.6c
     }
     // Carte creatura (non token) che arrivano nel cimitero da fuori dal campo, o che lasciano un cimitero (Syr Konrad, Dreadhound)
     if (isCreature(leaving) && !leaving.isToken && !leaving.isAbility) {
@@ -524,6 +538,9 @@ class Game {
   // Permanenti messi nel cimitero dal campo: gli inneschi "quando muore" guardano il campo com'era prima (CR 603.10a)
   toGraveyard(list) {
     const before = this.battlefield();
+    for (const d of list) { // "When this is put into a graveyard from the battlefield" (Nihil Spellbomb), anche per i non creatura
+      if (d.zone === 'battlefield') for (const a of this.triggersOf(d, 'selfToGraveyard')) this.queueTrigger(d, a);
+    }
     for (const d of list) {
       if (d.zone !== 'battlefield' || !isCreature(d)) continue;
       for (const w of before) {
@@ -680,6 +697,12 @@ class Game {
         }
         changed = true;
       }
+      // CR 704.5m: un'Aura che non incanta un oggetto legale va nel cimitero
+      const loose = this.battlefield().filter((o) => o.def.attach && this.objects.get(o.attachedTo)?.zone !== 'battlefield');
+      if (loose.length) {
+        this.toGraveyard(loose);
+        changed = true;
+      }
       for (const o of [...this.objects.values()]) {
         if (o.isToken && o.zone !== 'battlefield') { // CR 704.5d
           this.remove(o.id);
@@ -764,8 +787,17 @@ class Game {
     while (this.triggerQueue.length) {
       const t = this.triggerQueue.shift();
       if (!this.isAlive(t.controller)) continue;
-      if (t.ability.target) {
-        const options = this.targetOptions(t.ability.target, t.controller);
+      if (t.ability.modes && t.mode == null) { // CR 700.2b: la modalità si sceglie quando l'innesco va sulla Pila
+        const modes = t.ability.modes.map((m, index) => ({ index, name: t.ability.modeNames?.[index] || `Modalità ${index + 1}`,
+          ok: !m.target || this.targetOptions(m.target, t.controller).length > 0 }));
+        if (!modes.some((m) => m.ok)) continue;
+        this.triggerQueue.unshift(t);
+        this.ask({ type: 'chooseMode', player: t.controller, modes, source: t.source.name, trigger: t });
+        return 'waiting';
+      }
+      const target = t.mode != null ? t.ability.modes[t.mode].target : t.ability.target;
+      if (target) {
+        const options = this.targetOptions(target, t.controller);
         if (!options.length) continue;
         this.ask({ type: 'chooseTarget', player: t.controller, options, optional: !!t.ability.optional, trigger: t });
         return 'waiting';
@@ -798,7 +830,7 @@ class Game {
   }
 
   putTriggerOnStack(t, targets) {
-    this.putAbilityOnStack(t.controller, t.source, [].concat(t.ability.effect), targets, {
+    this.putAbilityOnStack(t.controller, t.source, t.mode != null ? [t.ability.modes[t.mode]] : [].concat(t.ability.effect), targets, {
       defender: t.defender, lkiPower: t.lkiPower, subject: t.subject, amount: t.amount, subjectController: t.subjectController,
     });
   }
@@ -823,6 +855,15 @@ class Game {
     return !!t && test(this, t, pid);
   }
 
+  // Animate Dead: la creatura torna sul campo sotto il controllo di chi controlla l'Aura, che le resta attaccata.
+  // Semplificazione: avviene mentre l'Aura si risolve, non con un innesco separato.
+  animate(auraId, cardId, controller) {
+    const creature = this.move(cardId, 'battlefield', { controller });
+    this.objects.get(auraId).attachedTo = creature;
+    const o = this.objects.get(creature);
+    o.enchantedBy = [...(o.enchantedBy || []), auraId];
+  }
+
   // ---------- Pila ----------
   resolveTop(onComplete) {
     const spell = this.objects.get(this.stackIds[this.stackIds.length - 1]);
@@ -843,13 +884,16 @@ class Game {
       return;
     }
     if (!spell.isAbility && isPermanentCard(spell)) {
-      this.move(spell.id, 'battlefield', { controller: spell.controller }); // CR 608.3
+      const counters = spell.escaped && spell.def.escape.counters;
+      const id = this.move(spell.id, 'battlefield', { controller: spell.controller }); // CR 608.3
+      if (counters) this.objects.get(id).counters['+1/+1'] = counters; // "escapes with N +1/+1 counters" (CR 702.138c)
+      if (spell.def.attach === 'reanimate' && legal[0]) this.animate(id, legal[0].object, spell.controller);
       onComplete();
       return;
     }
     const ctx = {
       controller: spell.controller, targets: legal, source: spell.sourceId, sourceCard: spell.sourceCard,
-      sacrificedPower: spell.sacrificedPower, defender: spell.defender, lkiPower: spell.lkiPower,
+      sacrificedPower: spell.sacrificedPower, sacrificedCount: spell.sacrificedCount, defender: spell.defender, lkiPower: spell.lkiPower,
       subject: spell.subject, amount: spell.amount, targetsByIndex: byIndex, subjectController: spell.subjectController, name: spell.name,
     };
     this.runEffects(spell.effects || [], 0, ctx, () => {
@@ -1109,10 +1153,36 @@ class Game {
       case 'exile':
         for (const t of ctx.targets) this.move(t.object, 'exile');
         break;
-      case 'putCounter': {
-        const o = effect.on === 'subject' ? this.objects.get(ctx.subject) : source;
-        if (o && o.zone === 'battlefield') o.counters['+1/+1'] = (o.counters['+1/+1'] || 0) + effect.amount;
+      case 'toLibraryTop':
+        for (const t of ctx.targets) this.move(t.object, 'library', { top: true, manual: true });
         break;
+      case 'putCounter': {
+        const kind = effect.counter || '+1/+1';
+        const list = effect.on === 'target' ? ctx.targets.map((t) => this.objects.get(t.object)) : [effect.on === 'subject' ? this.objects.get(ctx.subject) : source];
+        for (const o of list) if (o && o.zone === 'battlefield') o.counters[kind] = (o.counters[kind] || 0) + effect.amount;
+        break;
+      }
+      case 'removeCounters':
+        for (const o of this.battlefield()) delete o.counters[effect.counter];
+        break;
+      case 'sacrificeEnchanted': { // Animate Dead lascia il campo: chi controlla la creatura la sacrifica
+        const o = this.objects.get(ctx.subject);
+        if (o && o.zone === 'battlefield') this.toGraveyard([o]);
+        break;
+      }
+      case 'mayPay': { // "you may pay {B}. If you do, …" (CR 117.3: si attiva il mana durante il pagamento)
+        const cost = parseCost(effect.cost);
+        this.ask({ type: 'confirm', player: ctx.controller, prompt: `Paghi ${effect.cost} per ${effect.label || 'applicare l\'effetto'}?`,
+          resume: (yes) => {
+            if (yes && !canPay(s.pool, cost)) {
+              try { this.payAutomatically(ctx.controller, cost, new Set()); } catch (e) { if (!(e instanceof RuleError)) throw e; }
+            }
+            if (!yes || !canPay(this.state.get(ctx.controller).pool, cost)) return resume();
+            this.state.get(ctx.controller).pool = pay(this.state.get(ctx.controller).pool, cost);
+            if (!this.applyEffect(effect.effect, ctx, resume)) resume();
+            return undefined;
+          } });
+        return true;
       }
       case 'untapSelf':
         if (sourceOnField) source.tapped = false;
@@ -1186,7 +1256,7 @@ class Game {
       return;
     }
     if (this.priority !== pid) throw new RuleError('NO_PRIORITY', 'Non hai la priorità in questo momento');
-    if (!['pass', 'activateMana', 'playLand', 'cast', 'activate', 'manual'].includes(action.type)) {
+    if (!['pass', 'activateMana', 'playLand', 'cast', 'activate', 'cycle', 'manual'].includes(action.type)) {
       throw new RuleError('NOT_NOW', 'Questa azione non è possibile adesso');
     }
     this.actions[action.type].call(this, pid, action);
@@ -1262,7 +1332,11 @@ class Game {
   checkExtraCosts(pid, spec, action, src) {
     const sacrifice = (action.sacrifice || []).map((id) => this.objects.get(id));
     const discard = (action.discard || []).map((id) => this.objects.get(id));
-    if (spec.sacrifice) {
+    if (spec.sacrificeAny) { // "you may sacrifice one or more creatures" (Plumb the Forbidden)
+      const ok = new Set(sacrifice).size === sacrifice.length
+        && sacrifice.every((x) => x && x.zone === 'battlefield' && F.SACRIFICE[spec.sacrificeAny](this, x, pid, src));
+      if (!ok) throw new RuleError('MISSING_COST', 'Puoi sacrificare solo creature che controlli, una volta ciascuna');
+    } else if (spec.sacrifice) {
       const ok = sacrifice.length === 1 && sacrifice[0] && sacrifice[0].zone === 'battlefield'
         && F.SACRIFICE[spec.sacrifice](this, sacrifice[0], pid, src);
       if (!ok) throw new RuleError('MISSING_COST', `Per pagare il costo devi sacrificare ${spec.sacrifice === 'self' ? 'questo permanente' : `un ${{ goblin: 'Goblin', creature: 'creatura' }[spec.sacrifice]} che controlli`}`);
@@ -1273,6 +1347,15 @@ class Game {
       if (!ok) throw new RuleError('MISSING_COST', `Per pagare il costo devi scartare ${spec.discard} carta`);
     } else if (discard.length) throw new RuleError('MISSING_COST', 'Questo costo non prevede scarti');
     return { sacrifice, discard };
+  }
+
+  // Fuga (CR 702.138): si esiliano altre N carte dal proprio cimitero, oltre al costo di mana
+  checkEscape(pid, o, exile) {
+    const n = o.def.escape.exile;
+    const grave = this.state.get(pid).zones.graveyard;
+    const ok = exile.length === n && new Set(exile).size === n && exile.every((id) => id !== o.id && grave.includes(id));
+    if (!ok) throw new RuleError('MISSING_COST', `Per la Fuga devi esiliare altre ${n} carte dal tuo cimitero`);
+    return exile;
   }
 
   checkTargets(kind, targets, pid, what, kinds = null) {
@@ -1398,7 +1481,8 @@ Game.prototype.actions = {
 
   cast(pid, action) {
     const { object, targets = [] } = action;
-    const o = this.ownCard(pid, object, ['hand', 'command']);
+    const o = this.ownCard(pid, object, action.escape ? ['graveyard'] : ['hand', 'command']);
+    if (action.escape && !o.def.escape) throw new RuleError('NO_ESCAPE', `${o.name} non ha Fuga`);
     if (isType(o, 'Land')) throw new RuleError('LAND_NOT_CAST', 'Le terre si giocano, non si lanciano');
     if (!isType(o, 'Instant') && !this.hasKw(o, 'Flash') && !this.sorceryTiming(pid)) { // CR 702.8a
       throw new RuleError('SORCERY_TIMING', `${o.name} si può lanciare solo nella tua fase principale, con la Pila vuota`);
@@ -1413,7 +1497,8 @@ Game.prototype.actions = {
     this.checkTargets(kind, targets, pid, o.name, kinds);
     const { sacrifice, discard } = this.checkExtraCosts(pid, o.def.additionalCost || {}, action, o);
     const s = this.state.get(pid);
-    const cost = this.totalCost(pid, o);
+    const exiled = action.escape ? this.checkEscape(pid, o, action.exile || []) : [];
+    const cost = action.escape ? parseCost(o.def.escape.cost) : this.totalCost(pid, o);
     if (!canPay(s.pool, cost) && action.autoPay) this.payAutomatically(pid, cost, new Set([o.id, ...sacrifice.map((x) => x.id)]));
     if (!canPay(s.pool, cost)) throw new RuleError('NOT_ENOUGH_MANA', `Servono ${formatCost(cost)} per lanciare ${o.name}`);
     // da qui in poi l'azione è legale: si paga e la magia va sulla Pila
@@ -1422,10 +1507,26 @@ Game.prototype.actions = {
     const sacrificedPower = sacrifice.length ? this.power(sacrifice[0]) : undefined;
     if (sacrifice.length) this.toGraveyard(sacrifice);
     for (const d of discard) this.move(d.id, 'graveyard');
+    for (const x of exiled) this.move(x, 'exile');
     const id = this.move(o.id, 'stack', { targets });
     const spell = this.objects.get(id);
-    Object.assign(spell, { effects, targetKind: kind, targetKinds: kinds, sacrificedPower, controller: pid });
+    Object.assign(spell, { effects, targetKind: kind, targetKinds: kinds, sacrificedPower, sacrificedCount: sacrifice.length, controller: pid, escaped: !!action.escape });
     this.onCast(spell);
+  },
+
+  // Ciclo terre base (CR 702.29): dalla mano, si paga il costo e si scarta la carta; l'abilità cerca una terra base
+  cycle(pid, action) {
+    const o = this.ownCard(pid, action.object, ['hand']);
+    const c = o.def.cycling;
+    if (!c) throw new RuleError('NO_CYCLING', `${o.name} non ha il ciclo`);
+    const s = this.state.get(pid);
+    const cost = parseCost(c.cost);
+    if (!canPay(s.pool, cost) && action.autoPay) this.payAutomatically(pid, cost, new Set());
+    if (!canPay(s.pool, cost)) throw new RuleError('NOT_ENOUGH_MANA', `Servono ${formatCost(cost)} per il ciclo di ${o.name}`);
+    s.pool = pay(s.pool, cost);
+    const source = { name: o.name, id: o.id, cardId: o.cardId };
+    this.move(o.id, 'graveyard');
+    this.putAbilityOnStack(pid, source, [].concat(c.effect), []);
   },
 
   // Abilità attivate non di mana (CR 602): il costo può contenere {T}, mana, sacrifici e scarti
@@ -1544,6 +1645,14 @@ Game.prototype.actions = {
   },
 
   // order: gli indici degli inneschi nell'ordine in cui si risolveranno, dal primo all'ultimo
+  chooseMode(pid, { mode }) {
+    const d = this.decision;
+    if (!d.modes.some((m) => m.index === mode && m.ok)) throw new RuleError('INVALID_CHOICE', 'Scegli una delle modalità disponibili');
+    this.decision = null;
+    d.trigger.mode = mode;
+    this.givePriority(this.resumePid);
+  },
+
   orderTriggers(pid, { order = [] }) {
     const d = this.decision;
     const n = d.group.length;

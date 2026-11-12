@@ -747,6 +747,72 @@ const CARDS = {
       { kind: 'activated', cost: '{T}', sacrifice: 'self', effect: draw(1) },
     ],
   },
+  // ---------- Mazzo Syr Konrad: carte medie (testo a memoria, da ricontrollare su Scryfall) ----------
+  // ({T}: Add {B}.) This land enters tapped unless you control three or more other Swamps. / When this land enters untapped,
+  // you may put target creature card from your graveyard on top of your library.
+  "Witch's Cottage": {
+    name: "Witch's Cottage", types: ['Land'], entersTappedUnless: 'controls3OtherSwamps',
+    abilities: [blackMana, etb({ kind: 'toLibraryTop', target: 'creatureCardInYourGraveyard' }, { target: 'creatureCardInYourGraveyard', optional: true, ifUntapped: true })],
+  },
+  // {T}, Sacrifice Nihil Spellbomb: Exile target player's graveyard. / When Nihil Spellbomb is put into a graveyard from the
+  // battlefield, you may pay {B}. If you do, draw a card.
+  'Nihil Spellbomb': {
+    name: 'Nihil Spellbomb', types: ['Artifact'], cost: '{1}',
+    abilities: [
+      { kind: 'activated', cost: '{T}', sacrifice: 'self', effect: { kind: 'exileGraveyard', target: 'player' } },
+      { kind: 'triggered', when: 'selfToGraveyard', effect: { kind: 'mayPay', cost: '{B}', label: 'pescare una carta', effect: draw(1) } },
+    ],
+  },
+  // When Woe Strider enters, create a 0/1 white Goat creature token. / Sacrifice another creature: Scry 1.
+  // Escape—{3}{B}{B}, Exile four other cards from your graveyard. / Woe Strider escapes with two +1/+1 counters on it.
+  'Woe Strider': creature('Woe Strider', '{2}{B}', 3, 2, [], ['Horror'], {
+    escape: { cost: '{3}{B}{B}', exile: 4, counters: 2 },
+    abilities: [etb(tokens(1, 'Goat')), { kind: 'activated', cost: '', sacrifice: 'anotherCreature', effect: { kind: 'scry', amount: 1 } }],
+  }),
+  // When Shambling Ghast dies, choose one — • Each opponent loses 1 life and you gain 1 life.
+  // • Target creature an opponent controls gets -1/-1 until end of turn.
+  'Shambling Ghast': creature('Shambling Ghast', '{B}', 1, 1, [], ['Zombie'], {
+    abilities: [{
+      kind: 'triggered', when: 'dies',
+      modes: [{ kind: 'drain', amount: 1 }, { kind: 'pump', power: -1, toughness: -1, target: 'opponentCreature' }],
+      modeNames: ['Ogni avversario perde 1 vita e tu ne guadagni 1', 'Una creatura avversaria prende -1/-1'],
+    }],
+  }),
+  // Morph {B} / Whenever another nontoken creature you control dies, draw a card.
+  // (Il metamorfosi non è gestito: la carta si lancia solo a faccia in su.)
+  'Grim Haruspex': creature('Grim Haruspex', '{2}{B}', 3, 2, [], ['Human', 'Wizard'], {
+    abilities: [{ kind: 'triggered', when: 'dies', filter: 'anotherNontokenCreatureYouControl', effect: draw(1) }],
+  }),
+  // As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each
+  // creature sacrificed this way. / You draw a card and you lose 1 life.
+  // Semplificazione: le copie non vanno sulla Pila una per una; si pesca e si perde vita una volta in più per ogni sacrificio.
+  'Plumb the Forbidden': instant('Plumb the Forbidden', '{1}{B}', [{ kind: 'draw', amount: 'copiesPlusOne' }, { kind: 'loseLife', amount: 'copiesPlusOne' }],
+    { additionalCost: { sacrificeAny: 'creature' } }),
+  // {4}, {T}: Put a fate counter on target permanent. / {5}, {T}, Sacrifice Oblivion Stone: Destroy each nonland permanent
+  // without a fate counter on it, then remove all fate counters from all permanents.
+  'Oblivion Stone': {
+    name: 'Oblivion Stone', types: ['Artifact'], cost: '{3}',
+    abilities: [
+      { kind: 'activated', cost: '{4}{T}', effect: { kind: 'putCounter', on: 'target', counter: 'fate', amount: 1, target: 'permanent' } },
+      { kind: 'activated', cost: '{5}{T}', sacrifice: 'self', effect: [{ kind: 'destroyAll', filter: 'nonlandWithoutFate' }, { kind: 'removeCounters', counter: 'fate' }] },
+    ],
+  },
+  // Enchant creature card in a graveyard / When Animate Dead enters, if it's on the battlefield, it loses "enchant creature card in a
+  // graveyard" and gains "enchant creature put onto the battlefield with Animate Dead." Return enchanted creature card to the
+  // battlefield under your control and attach Animate Dead to it. When Animate Dead leaves the battlefield, that creature's
+  // controller sacrifices it. / Enchanted creature gets -1/-0.
+  'Animate Dead': {
+    name: 'Animate Dead', types: ['Enchantment'], subtypes: ['Aura'], cost: '{1}{B}', attach: 'reanimate',
+    effect: { kind: 'reanimate', target: 'creatureCardInGraveyard' }, // solo per il bersaglio: la rianimazione la fa animate()
+    enchantedMod: { power: -1 },
+    abilities: [{ kind: 'triggered', when: 'leaves', effect: { kind: 'sacrificeEnchanted' } }],
+  },
+  // {T}: Add {C}. / Basic landcycling {1} ({1}, Discard this card: Search your library for a basic land card, reveal it,
+  // put it into your hand, then shuffle.)
+  'Ash Barrens': {
+    name: 'Ash Barrens', types: ['Land'], cycling: { cost: '{1}', effect: searchLand('basicLand', 'hand') },
+    abilities: [{ kind: 'mana', cost: '{T}', produce: 'C' }],
+  },
   // Black spells you cast cost {1} less to cast.
   'Jet Medallion': { name: 'Jet Medallion', types: ['Artifact'], cost: '{2}', abilities: [{ kind: 'static', costReduction: { filter: 'blackSpell', amount: 1 } }] },
   // This artifact enters tapped. / {1}, {T}: Destroy all artifacts, creatures, and enchantments.
@@ -939,6 +1005,7 @@ const TOKENS = {
   'Beast 4/4': { name: 'Beast', types: ['Creature'], subtypes: ['Beast'], colors: ['G'], power: 4, toughness: 4 },
   'Human Soldier': { name: 'Human Soldier', types: ['Creature'], subtypes: ['Human', 'Soldier'], colors: ['W'], power: 1, toughness: 1 },
   Zombie: { name: 'Zombie', types: ['Creature'], subtypes: ['Zombie'], colors: ['B'], power: 2, toughness: 2 },
+  Goat: { name: 'Goat', types: ['Creature'], subtypes: ['Goat'], colors: ['W'], power: 0, toughness: 1 },
   Insect: { name: 'Insect', types: ['Creature'], subtypes: ['Insect'], colors: ['G'], power: 1, toughness: 1, keywords: ['Flying', 'Deathtouch'] },
   // Treasure: artifact with "{T}, Sacrifice this token: Add one mana of any color."
   Treasure: {

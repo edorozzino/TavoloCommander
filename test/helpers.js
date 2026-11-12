@@ -26,6 +26,7 @@ function autoDecide(game) {
   else if (d.type === 'scry') game.perform(d.player, { type: 'scry', top: d.cards, bottom: [] });
   else if (d.type === 'putBack') game.perform(d.player, { type: 'putBack', objects: game.zone(d.player, 'hand').slice(0, d.count).map((o) => o.id) });
   else if (d.type === 'chooseCards') game.perform(d.player, { type: 'chooseCards', objects: d.options.slice(0, d.count) });
+  else if (d.type === 'chooseMode') game.perform(d.player, { type: 'chooseMode', mode: d.modes.find((m) => m.ok).index });
   else if (d.type === 'chooseSacrifice') game.perform(d.player, { type: 'chooseSacrifice', object: d.options[0] });
   else throw new Error(`Decisione non gestita: ${d.type}`);
 }

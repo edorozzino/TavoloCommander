@@ -20,9 +20,9 @@
   const DECISION_NAMES = {
     declareAttackers: 'dichiarare gli attaccanti', declareBlockers: 'dichiarare i bloccanti', discard: 'scartare', chooseTarget: 'scegliere un bersaglio',
     confirm: 'decidere', search: 'cercare nel grimorio', scry: 'profetizzare', putBack: 'rimettere carte in cima', chooseCards: 'scegliere delle carte',
-    chooseSacrifice: 'scegliere cosa sacrificare', orderTriggers: 'ordinare le abilità innescate', assignDamage: 'dividere il danno', manual: 'applicare un effetto a mano',
+    chooseSacrifice: 'scegliere cosa sacrificare', chooseMode: 'scegliere una modalità', orderTriggers: 'ordinare le abilità innescate', assignDamage: 'dividere il danno', manual: 'applicare un effetto a mano',
   };
-  const COUNTER_LABELS = { '+1/+1': (n) => `+${n}`, '-1/-1': (n) => `−${n}`, loyalty: (n) => `◆${n}`, charge: (n) => `⚡${n}` };
+  const COUNTER_LABELS = { '+1/+1': (n) => `+${n}`, '-1/-1': (n) => `−${n}`, loyalty: (n) => `◆${n}`, charge: (n) => `⚡${n}`, fate: (n) => `fato ${n}` };
 
   let session = CT.store.get('ct-auto-session'); // { name, room, pid }
   let M = null; // ultimo messaggio autoState
@@ -153,7 +153,7 @@
     if (flow) {
       const step = flow.steps[flow.i];
       if (step?.kind === 'target') step.options.forEach((t) => keys.add(keyOf(t)));
-      if (step?.kind === 'sacrifice') step.options.forEach((id) => keys.add(`o:${id}`));
+      if (step?.kind === 'sacrifice' || step?.kind === 'sacrificeAny') step.options.forEach((id) => keys.add(`o:${id}`));
       if (step?.kind === 'discard') (me()?.hand || []).filter((o) => o.id !== step.exclude).forEach((o) => keys.add(`o:${o.id}`));
       return keys;
     }
@@ -518,6 +518,15 @@
       if (step.kind === 'discard') {
         return `<b>${esc(flow.title)}</b><p>Scegli ${step.count} carta da scartare (clicca nella mano).</p>${cancel}`;
       }
+      if (step.kind === 'sacrificeAny' || step.kind === 'exile') { // scelta multipla: si toccano le carte, poi Conferma
+        const ready = step.kind === 'sacrificeAny' || step.chosen.length === step.count;
+        const ask = step.kind === 'sacrificeAny'
+          ? 'Puoi sacrificare quante creature vuoi (anche nessuna) per pagare il costo:'
+          : `Scegli ${step.count} altre carte del tuo cimitero da esiliare (${step.chosen.length}/${step.count}):`;
+        return `<b>${esc(flow.title)}</b><p>${ask}</p>
+          <div class="aopts">${step.options.map((id) => `<button data-multi="${id}" class="${step.chosen.includes(id) ? 'primary' : ''}">${esc(findObject(id)?.name || id)}</button>`).join('')}</div>
+          <button class="primary" data-auto="multi-done" ${ready ? '' : 'disabled'}>Conferma</button> ${cancel}`;
+      }
     }
     const d = myDecision();
     if (d) return decisionPrompt(d);
@@ -570,6 +579,9 @@
         return `<b>${esc(d.source || 'Abilità innescata')}</b><p>Scegli un bersaglio:</p>
           <div class="aopts">${d.options.map((t) => `<button data-dtarget='${esc(JSON.stringify(t))}'>${esc(targetLabel(t))}</button>`).join('')}</div>
           ${d.optional ? '<button data-auto="no-target">Nessun bersaglio</button>' : ''}`;
+      case 'chooseMode':
+        return `<b>${esc(d.source || 'Abilità innescata')}</b><p>Scegli una modalità:</p>
+          <div class="aopts">${d.modes.map((m) => `<button data-dmode="${m.index}" ${m.ok ? '' : 'disabled title="Non ci sono bersagli validi"'}>${esc(m.name)}</button>`).join('')}</div>`;
       case 'chooseSacrifice':
         return `<b>Scegli cosa sacrificare</b><div class="aopts">${d.options.map((id) => `<button data-dsac="${id}">${esc(findObject(id)?.name)}</button>`).join('')}</div>`;
       case 'discard':
@@ -716,6 +728,7 @@
   function advanceFlow() {
     while (flow && flow.i < flow.steps.length) {
       const step = flow.steps[flow.i];
+      if (step.kind === 'sacrificeAny' && !step.options.length) { flow.i++; continue; } // niente da sacrificare: si lancia e basta
       if ((step.kind === 'target' || step.kind === 'sacrifice') && !step.options.length) {
         toast(step.kind === 'target' ? 'Non ci sono bersagli validi' : 'Non hai nulla da sacrificare per pagare il costo');
         flow = null;
@@ -735,7 +748,8 @@
 
   function costSteps(info, excludeId) {
     const steps = [];
-    if (info.sacrificeOptions) steps.push({ kind: 'sacrifice', options: info.sacrificeOptions });
+    if (info.sacrificeAny) steps.push({ kind: 'sacrificeAny', options: info.sacrificeOptions || [], chosen: [] });
+    else if (info.sacrificeOptions) steps.push({ kind: 'sacrifice', options: info.sacrificeOptions });
     if (info.discard) steps.push({ kind: 'discard', count: info.discard, exclude: excludeId });
     return steps;
   }
@@ -745,9 +759,47 @@
     const c = o.cast;
     if (!c) return toast('Questa carta non si può giocare adesso');
     if (c.playable && !c.playable.ok && c.playable.code !== 'NO_TARGETS') return toast(`Perché no? ${c.playable.message}`, 5000);
-    if (c.land) return act({ type: 'playLand', object: o.id });
-    const steps = c.modes ? [{ kind: 'mode', modes: c.modes }] : targetSteps(c.targets);
-    startFlow({ type: 'cast', object: o.id, targets: [], autoPay: true }, [...steps, ...costSteps(c, o.id)], `Lanci ${o.name} (${c.cost})`);
+    const play = () => {
+      if (c.land) return act({ type: 'playLand', object: o.id });
+      const steps = c.modes ? [{ kind: 'mode', modes: c.modes }] : targetSteps(c.targets);
+      return startFlow({ type: 'cast', object: o.id, targets: [], autoPay: true }, [...steps, ...costSteps(c, o.id)], `Lanci ${o.name} (${c.cost})`);
+    };
+    if (!c.cycle || o.zone !== 'hand') return play();
+    // Ciclo terre base (Ash Barrens): si sceglie se giocarla o ciclarla
+    const cycle = () => (c.cycle.playable && !c.cycle.playable.ok ? toast(`Perché no? ${c.cycle.playable.message}`, 5000)
+      : act({ type: 'cycle', object: o.id, autoPay: true }));
+    const r = document.querySelector(`[data-oid="${o.id}"]`)?.getBoundingClientRect();
+    return CT.showMenu(r ? r.left : 40, r ? r.top : 40, o.name, [
+      [c.land ? 'Gioca la terra' : `Lancia (${c.cost})`, play],
+      [`Ciclo terre base (${c.cycle.cost}): scartala e cerca una terra base`, cycle],
+    ]);
+  }
+
+  // Fuga (Woe Strider): dal cimitero, pagando il costo di Fuga ed esiliando altre carte
+  function escapeCard(o) {
+    if (!myPriority()) return toast(G().decision ? 'Prima va presa la decisione in corso' : 'Non hai la priorità');
+    const x = o.escape;
+    if (x.playable && !x.playable.ok) return toast(`Fuga: ${x.playable.message}`, 5000);
+    CT.closeModal();
+    return startFlow({ type: 'cast', object: o.id, targets: [], autoPay: true, escape: true, exile: [] },
+      [{ kind: 'exile', count: x.exile, options: x.options, chosen: [] }], `Fuga: lanci ${o.name} dal cimitero (${x.cost})`);
+  }
+
+  function toggleMulti(id) {
+    const step = flow.steps[flow.i];
+    if (!step.options.includes(id)) return toast(step.kind === 'exile' ? 'Scegli altre carte del tuo cimitero' : 'Puoi sacrificare solo tue creature');
+    if (step.chosen.includes(id)) step.chosen = step.chosen.filter((x) => x !== id);
+    else if (step.kind === 'sacrificeAny' || step.chosen.length < step.count) step.chosen.push(id);
+    return render();
+  }
+
+  function finishMulti() {
+    const step = flow?.steps[flow.i];
+    if (!step || (step.kind === 'exile' && step.chosen.length !== step.count)) return undefined;
+    if (step.kind === 'exile') flow.action.exile = [...step.chosen];
+    else flow.action.sacrifice = [...step.chosen];
+    flow.i++;
+    return advanceFlow();
   }
 
   function useAbility(o, ab) {
@@ -806,6 +858,8 @@
     if (btn?.dataset.color && step?.kind === 'color') { flow.action.color = btn.dataset.color; flow.i++; return advanceFlow(); }
     if (btn?.dataset.target && step?.kind === 'target') return pickFlowTarget(JSON.parse(btn.dataset.target));
     if (btn?.dataset.sac && step?.kind === 'sacrifice') return pickFlowSacrifice(Number(btn.dataset.sac));
+    if (btn?.dataset.multi && (step?.kind === 'sacrificeAny' || step?.kind === 'exile')) return toggleMulti(Number(btn.dataset.multi));
+    if (btn?.dataset.dmode && d?.type === 'chooseMode') return act({ type: 'chooseMode', mode: Number(btn.dataset.dmode) });
     if (btn?.dataset.dtarget && d?.type === 'chooseTarget') return act({ type: 'chooseTarget', target: JSON.parse(btn.dataset.dtarget) });
     if (btn?.dataset.dsac && d?.type === 'chooseSacrifice') return act({ type: 'chooseSacrifice', object: Number(btn.dataset.dsac) });
     if (btn?.dataset.defender && attack) { attack.defender = btn.dataset.defender; return render(); }
@@ -847,6 +901,7 @@
       case 'skip': return skipMenu();
       case 'rematch': return send({ t: 'autoRematch' });
       case 'cancel': flow = null; return render();
+      case 'multi-done': return finishMulti();
       case 'manual': manualMode = !manualMode; return render();
       case 'manual-done': return act({ type: 'manual', op: 'done' });
       case 'classic': return CT.setView('classic');
@@ -953,6 +1008,7 @@
     const step = flow?.steps[flow.i];
     if (step?.kind === 'target') return pickFlowTarget({ object: id });
     if (step?.kind === 'sacrifice') return pickFlowSacrifice(id);
+    if (step?.kind === 'sacrificeAny' || step?.kind === 'exile') return toggleMulti(id);
     if (step?.kind === 'discard') {
       if (zone !== 'hand' || id === step.exclude) return toast('Scegli una carta dalla tua mano');
       flow.action.discard = [...(flow.action.discard || []), id];
@@ -971,6 +1027,7 @@
     raised = null;
     if (zone === 'hand' || (zone === 'command' && o.owner === M.me)) return castCard(o);
     if (zone === 'battlefield' && o.controller === M.me) return abilityMenu(o, e.clientX, e.clientY);
+    if (zone === 'graveyard' && o.escape && o.owner === M.me) return escapeCard(o);
     return showDetail(o);
   }
 
